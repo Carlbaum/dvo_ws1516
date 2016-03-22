@@ -1,0 +1,32 @@
+
+1) Understand the theoretical part of the algorithm  (see also the
+course Multiple View Geometry (IN2228) slides + exercise 8) + literature
+I'm gonna put into the repository.
+
+2) Check the 3 existing implementations if they can be used for your
+work
+-project1 - Huber & t-distribution?
+-project1 - good interface (Tracker::align)
+-project2 - Jacobian & reduction
+-project3 - Not good at all?
+
+3) Create your own version (code parts can be of course copied from the
+3 existing projects) of the direct image alignment which should be
+faster than the existing 3 projects and has a clean code and a thorough
+documentation. 
+
+4+X) some MISC details
+ - no cuBLAS / stand-alone running
+ - implement photometric error with optional variance per depth
+ - implement photometric error with robust Huber norm / Tukey weights / t-distribution
+ - evaluation / unittests on benchmark data
+ - optional minimization of photometric+geometric error (if 2nd depthmap is given too)
+ - If necessary, existing CUDA CV-framework is existing
+ - ...
+
+
+=> Goal:
+-Get Direct Image Alignment running stable with different robust norms (using benchmark test data)
+-Speedup as fast as possible
+-As few external dependencies as possible
+

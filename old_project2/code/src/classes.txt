@@ -1,0 +1,36 @@
+Preprocessing:
+- downscaleIMap
+- downscaleDMap
+- buildPyramids
+- buildKPyramid
+- buildIKPyramid
+
+Test:
+- testPyramidLevels
+- testJacobian
+
+Residual:
+- computeResidual
+- computeResiduals
+
+Jacobian:
+- computeJacobian
+- computeJacobians
+
+Misc:
+- convertSE3ToTf
+- convertTfToSE3
+- loadIntensity
+- loadDepth
+- mulKVec
+- mulRVec
+- computeDerivatives
+
+Reduction:
+- multiplyAndReducePt1
+- reducePt2
+- multiplyAndReduce
+
+GPUMem:
+- allocGPUMem
+- freeGPUMem
