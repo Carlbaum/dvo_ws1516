@@ -46,7 +46,7 @@ FIND_PACKAGE(OpenCV 2.4.8 COMPONENTS opencv_core opencv_highgui opencv_imgproc R
 #==============================================================================
 
 # preprocessor define: source directory
-ADD_DEFINITIONS(-DDVO_CUDA_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+ADD_DEFINITIONS(-DDVO_CUDA_SOURCE_DIR=${PROJECT_SOURCE_DIR})
 
 # applications
 FILE(GLOB incs "src/*.h")
@@ -57,7 +57,7 @@ FILE(GLOB cuda_srcs "src/*.cu")
 #INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 CUDA_ADD_EXECUTABLE(dvo_cuda ${incs} ${srcs} ${cuda_incs} ${cuda_srcs})
+CUDA_ADD_CUBLAS_TO_TARGET(dvo_cuda)
 #SET(CUDA_SEPARABLE_COMPILATION ON)
 TARGET_LINK_LIBRARIES(dvo_cuda ${OpenCV_LIBS})
 #SET_TARGET_PROPERTIES(dvo_cuda PROPERTIES LINKER_LANGUAGE CXX)
-
