@@ -46,7 +46,7 @@ FIND_PACKAGE(OpenCV 2.4.8 COMPONENTS opencv_core opencv_highgui opencv_imgproc R
 #==============================================================================
 
 # preprocessor define: source directory
-ADD_DEFINITIONS(-DDVO_CUDA_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+ADD_DEFINITIONS(-DDVO_CUDA_SOURCE_DIR=${PROJECT_SOURCE_DIR})
 
 # applications
 FILE(GLOB incs "src/*.h")
