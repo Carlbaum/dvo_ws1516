@@ -25,7 +25,7 @@
 #include "tum_benchmark.hpp"
 #include "save_ply.hpp"
 
-#include "cublas_v2.h"
+#include <cublas_v2.h>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -58,7 +58,7 @@ void align(const cv::Mat &depthCur, const cv::Mat &grayCur, Vec6f& xi, float **d
     int n_h = h;
     Timer timer; timer.start();
     for (int lvl=lvlNum-1; lvl>=0; lvl--) {
-    
+
         for (int i=0; i<lvl; i++) {
             n_w = (n_w+1)/2;
             n_h = (n_h+1)/2;
@@ -134,7 +134,7 @@ void alignCB(cublasHandle_t handle, const cv::Mat &depthCur, const cv::Mat &gray
     int n_h = h;
     Timer timer; timer.start();
     for (int lvl=lvlNum-1; lvl>=0; lvl--) {
-    
+
         for (int i=0; i<lvl; i++) {
             n_w = (n_w+1)/2;
             n_h = (n_h+1)/2;
@@ -224,7 +224,7 @@ int main(int argc, char *argv[])
 	getParam("lvlnum", lvlNum, argc, argv);
 	lvlNum = std::max(1, lvlNum);
 	std::cout << "number of levels in pyramids: " << lvlNum << std::endl;
-	
+
 	// indicates which Lvl to show
 	int showLvl = 0;
 	getParam("slvl", showLvl, argc, argv);
@@ -351,7 +351,7 @@ int main(int argc, char *argv[])
 
     cv::Mat grayCur = loadIntensity(dataFolder + filesColor[0]);
     cv::Mat depthCur = loadDepth(dataFolder + filesDepth[0]);
-        
+
     // initially copy current input images to level 0 for later use as reference
     cudaMemcpy(d_iPyRef[0], (void*)grayCur.data, n*sizeof(float), cudaMemcpyHostToDevice);  CUDA_CHECK;
     cudaMemcpy(d_dPyRef[0], (void*)depthCur.data, n*sizeof(float), cudaMemcpyHostToDevice);  CUDA_CHECK;
@@ -368,12 +368,12 @@ int main(int argc, char *argv[])
         // get reference frame
         grayRef = loadIntensity(dataFolder + filesColor[frame]);
         depthRef = loadDepth(dataFolder + filesDepth[frame]);
-        
+
         // initially copy current input images to level 0 for later use as reference
         cudaMemcpy(d_iPyCrr[0], (void*)grayRef.data, n*sizeof(float), cudaMemcpyHostToDevice);  CUDA_CHECK;
         cudaMemcpy(d_dPyCrr[0], (void*)depthRef.data, n*sizeof(float), cudaMemcpyHostToDevice);  CUDA_CHECK;
         buildMapPyramids(d_iPyCrr, d_dPyCrr, lvlNum, w, h);
-        
+
         buildDrvPyramids(d_iPyRef, d_dXPy, d_dYPy, lvlNum, w, h);
 
         // Pointer Switch reference <-> current
@@ -386,7 +386,7 @@ int main(int argc, char *argv[])
         } else {
             alignCB(handle, depthCur, grayCur, xi, d_iPyRef, d_dPyRef, d_iPyCrr, d_dPyCrr, d_dXPy, d_dYPy, d_res, d_J, d_A, d_b, d_R, d_t, w, h, n, lvlNum, dth, d_redArr, d_redArr2);
         }
-        
+
         Eigen::Matrix3f rot;
         Eigen::Vector3f t;
         convertSE3ToTf(xi, rot, t);
