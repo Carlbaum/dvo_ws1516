@@ -1,16 +1,19 @@
 #include "Preprocessing.h"
 
+// downscale Intensity Map
+// n_w, n_w are rounded up fractions of w and h
 __global__ void downscaleIMap(float *iSrc, float *iDst, int n_w, int n_h, int w, int h) {
 	size_t x = threadIdx.x + blockDim.x*blockIdx.x;
 	size_t y = threadIdx.y + blockDim.y*blockIdx.y;
-	
+
 	if (x<n_w && y<n_h)
 	{
 		size_t idx = x + (size_t)n_w*y;
+		// accumulates starting with the top left pixel, which is always in the image
 		float iCrr = iSrc[2*x+2*y*w];
 		size_t fICrr = 4;
 		bool lr = true;
-		
+
 		if (2*x+1<w) iCrr += iSrc[2*x+1+2*y*w]; else {fICrr-=2; lr=false;}
 		if ((2*y+1)*w<h) iCrr += iSrc[2*x+(2*y+1)*w]; else { if (lr) {fICrr-=2; lr=false;} else fICrr--;}
 		if (lr) iCrr += iSrc[2*x+1+(2*y+1)*w];
@@ -22,7 +25,7 @@ __global__ void downscaleIMap(float *iSrc, float *iDst, int n_w, int n_h, int w,
 __global__ void downscaleDMap(float *dSrc, float *dDst, int n_w, int n_h, int w, int h) {
 	size_t x = threadIdx.x + blockDim.x*blockIdx.x;
 	size_t y = threadIdx.y + blockDim.y*blockIdx.y;
-	
+
 	if (x<n_w && y<n_h)
 	{
 		size_t idx = x + (size_t)n_w*y;
@@ -30,8 +33,8 @@ __global__ void downscaleDMap(float *dSrc, float *dDst, int n_w, int n_h, int w,
 		size_t fDCrr;
 		if (dCrr == 0) fDCrr = 3; else fDCrr = 4;
 		bool lri = true;
-		float val; 
-		
+		float val;
+
 		if (2*x+1<w) {
 			val = dSrc[2*x+1+2*y*w];
 			if (val>0.0f) dCrr += 1.0f/val; else fDCrr--;
@@ -54,21 +57,21 @@ __global__ void computeDerivatives (float *iCrr, float *dX, float *dY, int w, in
     size_t x = threadIdx.x + blockDim.x * blockIdx.x;
     size_t y = threadIdx.y + blockDim.y * blockIdx.y;
     size_t ind = x + y * w;
-    
+
     if (x<w && y<h) {
         dX[ind] = (iCrr[min((int)(x+1), w-1) + w*(int)y]-iCrr[max((int)(x-1), 0) + w*(int)y])*0.5f;
         dY[ind] = (iCrr[(int)x + w*min((int)(y+1), h-1)]-iCrr[(int)x + w*max((int)(y-1), 0)])*0.5f;
     }
-    
+
 }
 
 
 void  buildMapPyramids(float **img, float **depth, int lvl, int w, int h) {
-	
+
 	dim3 block = dim3(32, 8, 1);
 	dim3 grid = dim3((w+block.x-1)/block.x, (h+block.y-1)/block.y, 1);
 	int n_w, n_h;
-	
+
 	for (int i=0; i<lvl-1; i++) {
 		n_w = (w+1)/2;
 		n_h = (h+1)/2;
@@ -81,10 +84,10 @@ void  buildMapPyramids(float **img, float **depth, int lvl, int w, int h) {
 }
 
 void  buildDrvPyramids(float **img, float **d_dXPy, float **d_dYPy, int lvl, int w, int h) {
-	
+
 	dim3 block = dim3(32, 8, 1);
 	dim3 grid = dim3((w+block.x-1)/block.x, (h+block.y-1)/block.y, 1);
-	
+
 	for (int i=0; i<lvl; i++) {
 		grid = dim3((w+block.x-1)/block.x, (h+block.y-1)/block.y, 1);
     	computeDerivatives <<<grid, block>>> (img[i], d_dXPy[i], d_dYPy[i], w, h);

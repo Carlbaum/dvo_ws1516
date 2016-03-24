@@ -243,7 +243,7 @@ int main(int argc, char *argv[])
     std::cout << "show image type: " << showType << std::endl;
 
     // name of data folder
-    std::string datFolder = "freiburg";
+    std::string datFolder = "data/freiburg1_xyz_first_10";
     getParam("datfol", datFolder, argc, argv);
     std::cout << "data folder name: " << datFolder << std::endl;
 
