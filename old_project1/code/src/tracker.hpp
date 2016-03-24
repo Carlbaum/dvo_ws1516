@@ -98,26 +98,26 @@ public:
       cudaFree(d_tdistWeightedSqSum); CUDA_CHECK;
     }
   }
-  
+
   Vector6f align(cv::Mat &grayCur, cv::Mat &depthCur) {
-  Vector6f frameXi = lastFrameXi; // Good initial guess
+    Vector6f frameXi = lastFrameXi; // Good initial guess
 
-  int w = width;
-  int h = height;
+    int w = width;
+    int h = height;
 
-  // Fill Pyramid
-  cudaMemcpy(d_cur[0].gray, grayCur.data, w*h*sizeof(float), cudaMemcpyHostToDevice); CUDA_CHECK;
-  cudaMemcpy(d_cur[0].depth, depthCur.data, w*h*sizeof(float), cudaMemcpyHostToDevice); CUDA_CHECK;
+    // Fill Pyramid
+    cudaMemcpy(d_cur[0].gray, grayCur.data, w*h*sizeof(float), cudaMemcpyHostToDevice); CUDA_CHECK;
+    cudaMemcpy(d_cur[0].depth, depthCur.data, w*h*sizeof(float), cudaMemcpyHostToDevice); CUDA_CHECK;
 
-  for (int l = 1; l <= maxLevel; l++) {
-    int lw = w / (1 << l);
-    int lh = h / (1 << l);
-    downsampleGray(d_cur[l].gray, d_cur[l-1].gray, lw, lh);
-    downsampleDepth(d_cur[l].depth, d_cur[l-1].depth, lw, lh);
-  }
+    for (int l = 1; l <= maxLevel; l++) { // TODO: Maybe it's better to calculate the downsamples in the main for loop below. So we don't waste time if we get to break early
+      int lw = w / (1 << l);
+      int lh = h / (1 << l);
+      downsampleGray(d_cur[l].gray, d_cur[l-1].gray, lw, lh);
+      downsampleDepth(d_cur[l].depth, d_cur[l-1].depth, lw, lh);
+    }
 
     // Align images
-    if (count > 1) {
+    if (count > 1) { // TODO: what is this count for? it is set to zero when the tracker is created. So, 2 iterations where this is false?
       float tmr = (float)cv::getTickCount();
       for (int l = maxLevel; l >= minLevel; --l) {
         int lw = w / (1 << l);

@@ -111,6 +111,7 @@ public:
       if (l >= depthRows.size()) { break; }
       if (m >= groundtruthRows.size()) { break; }
 
+      // TODO: I'm not sure they've matched the correct timestamps with each other.. groundTruth has a different format
       double tRGB = rgbRows[k].timestamp;
       double tDepth = depthRows[l].timestamp;
       double tGround = groundtruthRows[m].timestamp;

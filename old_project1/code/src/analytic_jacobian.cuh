@@ -91,8 +91,8 @@ inline __device__ void d_derivative(float *d, float *img, int x, int y, int w, i
 }
 
 
-__global__ void d_calc_analytic_jacobian(float* jacobian, float *residual, int *n, 
-  float *visualResidual, float *grayPreImg, float *depthPreImg, 
+__global__ void d_calc_analytic_jacobian(float* jacobian, float *residual, int *n,
+  float *visualResidual, float *grayPreImg, float *depthPreImg,
   float *grayCurImg, AnalyticJacobianStuff stuff, int w, int h, ResidualWeight wType) {
 
   int x = threadIdx.x + blockIdx.x * blockDim.x;
@@ -100,8 +100,8 @@ __global__ void d_calc_analytic_jacobian(float* jacobian, float *residual, int *
 
   if (x < w && y < h) {
     float r = calcResidual(grayPreImg, depthPreImg, grayCurImg, stuff.kMat, stuff.rkInvMat, stuff.tVec, x, y, w, h, wType);
-    float d = depthPreImg[x + y*w]; 
-    KVec3 p = { x * d, y * d, d };  
+    float d = depthPreImg[x + y*w];
+    KVec3 p = { x * d, y * d, d };
     KVec3 pTrans =  stuff.rkInvMat * p + stuff.tVec;
     KVec3 pTransproj = stuff.kMat * pTrans;
     if (pTrans.a2 != 0 && pTransproj.a2 > 0 && d > 0) {
@@ -183,7 +183,7 @@ void calcTDistWeighted_R(float * d_residual, int n, int w, int h, float &initSca
   dim3 blockDim(16, 16, 1);
   dim3 gridDim(ceilDivide(w, blockDim.x), ceilDivide(h, blockDim.y), 1);
   do{
-    initScale = scale;   
+    initScale = scale;
     d_TdistSquareTerms<<<gridDim, blockDim>>>(d_wSquareterm, d_residual, w, h, initScale); CUDA_CHECK;
     //compute new scale:
     cublasSasum(handle, n , d_wSquareterm, 1 , &cb_result);
@@ -204,7 +204,7 @@ void calcResidualAndJacobian(float *d_jacobian, float *d_residual, int *d_n, flo
   Vector6f xi, Matrix3f K, int w, int h, ResidualWeight wType) {
 
   AnalyticJacobianStuff stuff;
-  Matrix3f R; Vector3f t; convertSE3ToTf(xi, R, t);
+  Matrix3f R; Vector3f t; convertSE3ToTf(xi, R, t); // converts the data in xi and stores it in R and t, using Sophus::SE3f::exp() function
   Matrix3f RKInv = R * K.inverse();
 
   stuff.kMat = *(KMat3 *)K.data();

@@ -23,7 +23,7 @@
 #include "aux.h"
 #include "tum_benchmark.hpp"
 #include "dataset.hpp"
-#include "viewer.hpp"
+//#include "viewer.hpp"
 #include "tracker.hpp"
 
 using namespace Eigen;
@@ -67,7 +67,7 @@ int main(int argc, char *argv[]) {
     timestamps.push_back(dataset.frames[i].timestamp);
 
     // Update viewer
-    updateViewer(createPointCloud(K, depth, color), absPose);
+    //updateViewer(createPointCloud(K, depth, color), absPose);
   }
 
   std::cout << "Average runtime: " << tracker.averageTime() << " ms" << std::endl;
