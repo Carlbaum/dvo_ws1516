@@ -199,6 +199,26 @@ void calcTDistWeighted_R(float * d_residual, int n, int w, int h, float &initSca
   cudaFree(d_wSquareterm); CUDA_CHECK;
 }
 
+// TODO oskar: thought I should try and make some documentation using doxygen
+
+/**
+ * This is where some explanation text will go when I've read the whole function.
+ * Should calculate the residual image and jacobian
+ * @param d_jacobian is a float pointer argument.
+ * @param d_residual is a float pointer argument.
+ * @param d_n is a float pointer argument.
+ * @param tdistInitScale is a float argument.
+ * @param d_visualResidual is a float pointer argument.
+ * @param d_grayPreImg is a float pointer argument.
+ * @param d_depthPreImg is a float pointer argument.
+ * @param d_grayCurImg is a float pointer argument.
+ * @param xi is a Vector6f argument.
+ * @param K is a Matrix3f representing camera prooperties
+ * @param w is an int representing resolution height of the image in the current pyramid level.
+ * @param h is an int representing resolution height of the image in the current pyramid level.
+ * @param wType is an enum that can be either 'NONE', 'HUBER' or 'TDIST'.
+ * @return The test results
+ */
 void calcResidualAndJacobian(float *d_jacobian, float *d_residual, int *d_n, float &tdistInitScale,float *d_visualResidual,
   float *d_grayPreImg, float *d_depthPreImg, float *d_grayCurImg,
   Vector6f xi, Matrix3f K, int w, int h, ResidualWeight wType) {

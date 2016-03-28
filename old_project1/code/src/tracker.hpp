@@ -40,7 +40,7 @@ public:
 
     width = grayFirstFrame.cols;
     height = grayFirstFrame.rows;
-    int w = width;
+    int w = width;  //TODO oskar: No point calling it something else.. Might aswell just use width and height
     int h = height;
 
     // Create Buffers
@@ -73,7 +73,7 @@ public:
     for (int l = 1; l <= maxLevel; l++) { Ks[l] = downsampleK(Ks[l-1]); }
 
     // Fill pyramid
-    align(grayFirstFrame, depthFirstFrame);
+    align(grayFirstFrame, depthFirstFrame); // TODO oskar: this function call returns a Vector6f, don't we need a variable to catch it? Maybe nicer with a initializing funciton here
   }
 
   ~Tracker() {
@@ -102,14 +102,14 @@ public:
   Vector6f align(cv::Mat &grayCur, cv::Mat &depthCur) {
     Vector6f frameXi = lastFrameXi; // Good initial guess
 
-    int w = width;
+    int w = width; //TODO oskar: No point calling it something else.. Might aswell just use width and height
     int h = height;
 
     // Fill Pyramid
     cudaMemcpy(d_cur[0].gray, grayCur.data, w*h*sizeof(float), cudaMemcpyHostToDevice); CUDA_CHECK;
     cudaMemcpy(d_cur[0].depth, depthCur.data, w*h*sizeof(float), cudaMemcpyHostToDevice); CUDA_CHECK;
 
-    for (int l = 1; l <= maxLevel; l++) { // TODO: Maybe it's better to calculate the downsamples in the main for loop below. So we don't waste time if we get to break early
+    for (int l = 1; l <= maxLevel; l++) { // TODO oskar: Maybe it's better to calculate the downsamples in the main for loop below. So we don't waste time if we get to break early
       int lw = w / (1 << l);
       int lh = h / (1 << l);
       downsampleGray(d_cur[l].gray, d_cur[l-1].gray, lw, lh);
@@ -117,7 +117,7 @@ public:
     }
 
     // Align images
-    if (count > 1) { // TODO: what is this count for? it is set to zero when the tracker is created. So, 2 iterations where this is false?
+    if (count > 1) { // TODO oskar: what is this count for? it is set to 0 when the tracker is created. So, 2 iterations where this is false? AHAAAA.. they call this function from the constructor once as an initializer, but still, why not: counter>0? Maybe its nicer/cleaner code to have a initializing function?
       float tmr = (float)cv::getTickCount();
       for (int l = maxLevel; l >= minLevel; --l) {
         int lw = w / (1 << l);
@@ -136,7 +136,7 @@ public:
           int n = 0; // Height of jacobian
 
           { // Compute Jacobian and residual
-            cudaMemcpy(d_n, &n, sizeof(int), cudaMemcpyHostToDevice); CUDA_CHECK;
+            cudaMemcpy(d_n, &n, sizeof(int), cudaMemcpyHostToDevice); CUDA_CHECK; // TODO oskar: &n? what is this for? copying a memory address between Host and Device? Must be a better way
             calcResidualAndJacobian(
               d_J, d_r, d_n, scale, d_visualResidual,
               d_prev[l].gray, d_prev[l].depth, d_cur[l].gray,
@@ -219,7 +219,7 @@ public:
     ++count;
 
     // Swap buffers
-    { std::vector<PyramidLevel> tmp = d_cur;  d_cur = d_prev; d_prev = tmp; }
+    { std::vector<PyramidLevel> tmp = d_cur;  d_cur = d_prev; d_prev = tmp; } // TODO oskar: do we really need to swap? d_cur is completely reset the next time this function is called anyhow
 
     return frameXi;
   }
