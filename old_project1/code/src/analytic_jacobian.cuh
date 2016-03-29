@@ -202,8 +202,9 @@ void calcTDistWeighted_R(float * d_residual, int n, int w, int h, float &initSca
 // TODO oskar: thought I should try and make some documentation using doxygen
 
 /**
- * This is where some explanation text will go when I've read the whole function.
- * Should calculate the residual image and jacobian
+ * @brief Calculate the residual image and jacobian
+ *
+ * Further description goes here
  * @param d_jacobian is a float pointer argument.
  * @param d_residual is a float pointer argument.
  * @param d_n is a float pointer argument.
