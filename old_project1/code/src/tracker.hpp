@@ -9,9 +9,6 @@ enum DerivativeMethod { ANALYTIC, NUMERIC };
 
 class Tracker {
 private:
-  typedef Eigen::Matrix<float, 3, 3> Matrix3f;
-  typedef Eigen::Matrix<float, 6, 6> Matrix6f;
-  typedef Eigen::Matrix<float, 6, 1> Vector6f;
   struct PyramidLevel { float *gray, *depth; };
 
 public:
