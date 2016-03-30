@@ -41,6 +41,8 @@ int main(int argc, char *argv[]) {
     cv::Mat gray = loadIntensity(dataset.frames[0].colorPath);
     cv::Mat depth = loadDepth(dataset.frames[0].depthPath);
 
+    // TODO: WE NEED TO INITIALIZE THE IMAGES BEFORE THE MAIN LOOP
+
     /* This is not really needed yet, uncomment when we need it
     // Store pose for frame 0
     poses.push_back(Matrix4f::Identity());
@@ -54,12 +56,10 @@ int main(int argc, char *argv[]) {
         cv::Mat gray = loadIntensity(dataset.frames[i].colorPath);
         cv::Mat depth = loadDepth(dataset.frames[i].depthPath);
 
-
-
-
-
-
-
+        Timer timer; timer.start();
+        // TODO: THIS IS WHERE WE SHOULD CALL THE ALIGN FUNCITON
+        timer.end();  float t = timer.get();  // elapsed time in seconds
+        cout << "Time of image " << i  << ": " << t*1000 << " ms" << endl;
         // show input image
         //showImage("Input " + std::to_string(i), gray, 100+20*i, 100+10*i);  // show at position (x_from_left=100,y_from_above=100)
     }
