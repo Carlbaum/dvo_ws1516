@@ -34,7 +34,7 @@ inline __device__ float interp2(float *img, float x, float y, int w, int h) {
   int x2 = x1 + 1, y2 = y1 + 1;
 
   return img[x1 + y1*w] * (x2-x) *  (y2-y ) + img[x2 + y1*w] * (x-x1) * (y2-y )
-       + img[x1 + y2*w] * (x2-x) *  (y -y1) + img[x2 + y2*w] * (x-x1)  *(y -y1);
+       + img[x1 + y2*w] * (x2-x) *  (y -y1) + img[x2 + y2*w] * (x-x1)  *(y -y1); // TODO oskar: I think we might be getting out of bounds here. Might be OK since we are then multiplying by 0 anyhow.
 }
 
 inline __device__ float calcWeight(float r, ResidualWeight wType){
@@ -60,10 +60,10 @@ inline __device__ float calcResidual(
   int x, int y,
   int w, int h, ResidualWeight wType
 ) {
-  float d = depthPreImg[x + y*w];
+  float d = depthPreImg[x + y*w]; // TODO oskar: instead of sending the pointer to the depthImg, maybe it's better to just send the value itself? It is already beeing calculated in __global__ too..
 
-  KVec3 p = { x * d, y * d, d };
-  KVec3 pTrans = K * (RKInv * p + t);
+  KVec3 p = { x * d, y * d, d }; // TODO oskar: also being calculated in __global__
+  KVec3 pTrans = K * (RKInv * p + t); // TODO oskar: also being calculated in __global__
 
   if(pTrans.a2 > 0 && d > 0) {
     float xCur = pTrans.a0 / pTrans.a2;
@@ -80,6 +80,19 @@ inline __device__ float calcResidual(
   return INVALID;
 }
 
+/**
+ *
+ *@brief Calculate the centered derivative of pixel x,y
+ * d[0] will store the x-derivative
+ * d[1] will store the y-derivative
+ *
+ * @param d is a float pointer to a float array of size 2.
+ * @param img is a float pointer to the image from which the derivates are to be calculated
+ * @param x is an int denoting the x-position of the image at which the derivative is to be calculated
+ * @param y is an int denoting the y-position of the image at which the derivative is to be calculated
+ * @param w is the width of the image
+ * @param h is the height of the image
+ */
 inline __device__ void d_derivative(float *d, float *img, int x, int y, int w, int h){
   int right = x + 1 ;
   int left = x - 1 ;
@@ -100,7 +113,7 @@ __global__ void d_calc_analytic_jacobian(float* jacobian, float *residual, int *
 
   if (x < w && y < h) {
     float r = calcResidual(grayPreImg, depthPreImg, grayCurImg, stuff.kMat, stuff.rkInvMat, stuff.tVec, x, y, w, h, wType);
-    float d = depthPreImg[x + y*w];
+    float d = depthPreImg[x + y*w]; // TODO oskar: Maybe move this line above and pass d into calcResidual instead of the depthImg pointer
     KVec3 p = { x * d, y * d, d };
     KVec3 pTrans =  stuff.rkInvMat * p + stuff.tVec;
     KVec3 pTransproj = stuff.kMat * pTrans;
@@ -108,41 +121,41 @@ __global__ void d_calc_analytic_jacobian(float* jacobian, float *residual, int *
         float xCur = pTransproj.a0 / pTransproj.a2;
         float yCur = pTransproj.a1 / pTransproj.a2;
 
-      //calculate derivative dI/dx, dI/dy at (xCur,yCur) via bilinear interpolation
-      int x1 = (int) xCur;
-      int y1 = (int) yCur;
-      int x2 = x1 + 1;
-      int y2 = y1 + 1;
+        //calculate derivative dI/dx, dI/dy at (xCur,yCur) via bilinear interpolation
+        int x1 = (int) xCur;
+        int y1 = (int) yCur;
+        int x2 = x1 + 1;
+        int y2 = y1 + 1;
 
-      float d11[2], d21[2], d12[2], d22[2];
+        float d11[2], d21[2], d12[2], d22[2];
 
-      d_derivative(d11, grayCurImg, x1, y1, w, h);
-      d_derivative(d21, grayCurImg, x2, y1, w, h);
-      d_derivative(d12, grayCurImg, x1, y2, w, h);
-      d_derivative(d22, grayCurImg, x2, y2, w, h);
+        d_derivative(d11, grayCurImg, x1, y1, w, h);
+        d_derivative(d21, grayCurImg, x2, y1, w, h);
+        d_derivative(d12, grayCurImg, x1, y2, w, h);
+        d_derivative(d22, grayCurImg, x2, y2, w, h);
 
-      float dxInterp = stuff.kMat.a00 * d_biinterpolate2(d11[0], d21[0], d12[0], d22[0], xCur, yCur);// 4 points interpolation
-      float dyInterp = stuff.kMat.a11 * d_biinterpolate2(d11[1], d21[1], d12[1], d22[1], xCur, yCur);// 4 points interpolation
-      float xp = pTrans.a0;
-      float yp = pTrans.a1;
-      float zp = pTrans.a2;
-      float tmp_jacobian[6];
+        float dxInterp = stuff.kMat.a00 * d_biinterpolate2(d11[0], d21[0], d12[0], d22[0], xCur, yCur);// 4 points interpolation
+        float dyInterp = stuff.kMat.a11 * d_biinterpolate2(d11[1], d21[1], d12[1], d22[1], xCur, yCur);// 4 points interpolation
+        float xp = pTrans.a0;
+        float yp = pTrans.a1;
+        float zp = pTrans.a2;
+        float tmp_jacobian[6];
 
-      tmp_jacobian[0] = dxInterp / zp;
-      tmp_jacobian[1] = dyInterp / zp;
-      tmp_jacobian[2] =  -(dxInterp * xp + dyInterp * yp) / (zp * zp);
-      tmp_jacobian[3] =  -(dxInterp * xp * yp) / (zp * zp) - dyInterp * (1 + (yp / zp) * (yp / zp) );
-      tmp_jacobian[4] =  dxInterp * (1 + (xp / zp) * (xp / zp) ) + (dyInterp * xp * yp) / (zp * zp);
-      tmp_jacobian[5] =  (-dxInterp * yp + dyInterp * xp) / zp;
+        tmp_jacobian[0] = dxInterp / zp;
+        tmp_jacobian[1] = dyInterp / zp;
+        tmp_jacobian[2] =  -(dxInterp * xp + dyInterp * yp) / (zp * zp);
+        tmp_jacobian[3] =  -(dxInterp * xp * yp) / (zp * zp) - dyInterp * (1 + (yp / zp) * (yp / zp) );
+        tmp_jacobian[4] =  dxInterp * (1 + (xp / zp) * (xp / zp) ) + (dyInterp * xp * yp) / (zp * zp);
+        tmp_jacobian[5] =  (-dxInterp * yp + dyInterp * xp) / zp;
 
-      if (isValid(r) && isValid(tmp_jacobian[0]) && isValid(tmp_jacobian[1]) && isValid(tmp_jacobian[2]) &&
+        if (isValid(r) && isValid(tmp_jacobian[0]) && isValid(tmp_jacobian[1]) && isValid(tmp_jacobian[2]) &&
           isValid(tmp_jacobian[3]) && isValid(tmp_jacobian[4]) && isValid(tmp_jacobian[5])) {
         int pixelIdx = atomicAdd(n, 1);
           residual[pixelIdx] = r;
           for(int i = 0; i < 6; i++) {
             jacobian[w*h*i + pixelIdx] = -tmp_jacobian[i];
           }
-      }
+        }
 
     }
     visualResidual[x + y*w] = isValid(r) ? r : 0;
@@ -202,8 +215,9 @@ void calcTDistWeighted_R(float * d_residual, int n, int w, int h, float &initSca
 // TODO oskar: thought I should try and make some documentation using doxygen
 
 /**
- * This is where some explanation text will go when I've read the whole function.
- * Should calculate the residual image and jacobian
+ * @brief Calculate the residual image and jacobian
+ *
+ * Further description goes here
  * @param d_jacobian is a float pointer argument.
  * @param d_residual is a float pointer argument.
  * @param d_n is a float pointer argument.
@@ -217,7 +231,6 @@ void calcTDistWeighted_R(float * d_residual, int n, int w, int h, float &initSca
  * @param w is an int representing resolution height of the image in the current pyramid level.
  * @param h is an int representing resolution height of the image in the current pyramid level.
  * @param wType is an enum that can be either 'NONE', 'HUBER' or 'TDIST'.
- * @return The test results
  */
 void calcResidualAndJacobian(float *d_jacobian, float *d_residual, int *d_n, float &tdistInitScale,float *d_visualResidual,
   float *d_grayPreImg, float *d_depthPreImg, float *d_grayCurImg,
