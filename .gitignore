@@ -1,0 +1,14 @@
+/build/
+
+ludicrous
+
+__MACOSX
+.DS_Store
+
+# OS generated files #
+######################
+*/.DS_Store
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
