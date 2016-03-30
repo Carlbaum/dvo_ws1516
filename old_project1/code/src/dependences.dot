@@ -1,0 +1,52 @@
+digraph G {
+  main -> { iostream
+            fstream
+            vector
+            sstream
+            iomanip
+          }
+
+  main -> cublas_v2
+
+  main -> Eigen
+  main -> opencv2
+  main -> sophus
+
+  main -> { aux -> { cuda_runtime
+                     ctime
+                     opencv2
+                     string
+                     sstream
+                     cstdlib
+                     iostream
+                   }
+            tum_benchmark -> { iostream
+                               iomanip
+                               stringfstream
+                               vector
+
+                               Eigen
+
+                               opencv2
+                             }
+            dataset -> { sophus
+                         tum_benchmark
+                       }
+            tracker -> { helpers -> { aux
+                                      sophus
+                                    }
+                         downsample -> { Eigen
+                                         helpers
+                                       }
+                         cuda_timer -> stdexcept
+                         analytic_jacobian -> { aux
+                                                helpers
+
+                                                sophus
+                                                Eigen
+                                                kernel_math
+                                                math
+                                              }
+                       }
+          }
+}
