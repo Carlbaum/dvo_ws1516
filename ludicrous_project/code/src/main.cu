@@ -7,6 +7,7 @@
 #include <iostream>
 #include "tum_benchmark.hpp"
 #include "dataset.hpp"
+#include "tracker.hpp"
 
 using namespace std;
 
@@ -38,8 +39,19 @@ int main(int argc, char *argv[]) {
     //std::vector<Eigen::Matrix4f> poses;
 
     // Load images for frame 0, for initialization purposes
-    cv::Mat gray = loadIntensity(dataset.frames[0].colorPath);
-    cv::Mat depth = loadDepth(dataset.frames[0].depthPath);
+    cv::Mat mGray = loadIntensity(dataset.frames[0].colorPath);
+    cv::Mat mDepth = loadDepth(dataset.frames[0].depthPath);
+
+    // get image dimensions
+    int w = mGray.cols;
+    int h = mGray.rows;
+
+    // allocate raw input intensity and depth arrays
+    float *imgGray = new float[(size_t)w*h];
+    float *imgDepth = new float[(size_t)w*h];
+
+    // initialize the tracker
+    // Tracker tracker(imgGray, imgDepth, w, h, K);
 
     // TODO: WE NEED TO INITIALIZE THE IMAGES BEFORE THE MAIN LOOP
 
@@ -53,8 +65,8 @@ int main(int argc, char *argv[]) {
     std::cout << "Hello world" << std::endl;
     for (int i = 1; i < dataset.frames.size(); ++i) {
         // Load in the images of the next frame
-        cv::Mat gray = loadIntensity(dataset.frames[i].colorPath);
-        cv::Mat depth = loadDepth(dataset.frames[i].depthPath);
+        cv::Mat mGray = loadIntensity(dataset.frames[i].colorPath);
+        cv::Mat mDepth = loadDepth(dataset.frames[i].depthPath);
 
         Timer timer; timer.start();
         // TODO: THIS IS WHERE WE SHOULD CALL THE ALIGN FUNCITON
