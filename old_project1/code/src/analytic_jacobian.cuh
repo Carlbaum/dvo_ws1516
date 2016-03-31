@@ -29,6 +29,15 @@ struct AnalyticJacobianStuff {
   KMat3 rkInvMat, kMat;
 };
 
+/**
+ * [Linear interpolation from the four pixels closest to the float values x & y]
+ * @param  img [float pointer to image]
+ * @param  x   [float value < w-1]
+ * @param  y   [float value < h-1]
+ * @param  w   [int width]
+ * @param  h   [int height]
+ * @return     [float, interpolated intesity value]
+ */
 inline __device__ float interp2(float *img, float x, float y, int w, int h) {
   int x1 = (int)x, y1 = (int)y;
   int x2 = x1 + 1, y2 = y1 + 1;
@@ -65,9 +74,9 @@ inline __device__ float calcResidual(
   KVec3 p = { x * d, y * d, d }; // TODO oskar: also being calculated in __global__
   KVec3 pTrans = K * (RKInv * p + t); // TODO oskar: also being calculated in __global__
 
-  if(pTrans.a2 > 0 && d > 0) {
-    float xCur = pTrans.a0 / pTrans.a2;
-    float yCur = pTrans.a1 / pTrans.a2;
+  if(pTrans.a2 > 0 && d > 0) {          // TODO oskar: also being checked in __global__
+    float xCur = pTrans.a0 / pTrans.a2; // TODO oskar: also being calculated in __global__
+    float yCur = pTrans.a1 / pTrans.a2;// TODO oskar: also being calculated in __global__
     if (xCur >= 0 && xCur <= w-1 && yCur >= 0 && yCur <= h-1) {
       float pixelCur = interp2(grayCurImg, xCur, yCur, w, h);
       float pixelPre = grayPreImg[x + y*w];
@@ -103,7 +112,20 @@ inline __device__ void d_derivative(float *d, float *img, int x, int y, int w, i
 
 }
 
-
+/**
+ * [d_calc_analytic_jacobian description]
+ * @param jacobian       [being updated]
+ * @param residual       [being updated]
+ * @param n              []
+ * @param visualResidual [being updated]
+ * @param grayPreImg     [description]
+ * @param depthPreImg    [description]
+ * @param grayCurImg     [description]
+ * @param stuff          [description]
+ * @param w              [description]
+ * @param h              [description]
+ * @param wType          [enum. Type of weighting function. Can be either: NONE, TDIST or HUBER]
+ */
 __global__ void d_calc_analytic_jacobian(float* jacobian, float *residual, int *n,
   float *visualResidual, float *grayPreImg, float *depthPreImg,
   float *grayCurImg, AnalyticJacobianStuff stuff, int w, int h, ResidualWeight wType) {
@@ -118,6 +140,7 @@ __global__ void d_calc_analytic_jacobian(float* jacobian, float *residual, int *
     KVec3 pTrans =  stuff.rkInvMat * p + stuff.tVec;
     KVec3 pTransproj = stuff.kMat * pTrans;
     if (pTrans.a2 != 0 && pTransproj.a2 > 0 && d > 0) {
+        // projection formula: π(x,y,z) = [x/z, y/z]'
         float xCur = pTransproj.a0 / pTransproj.a2;
         float yCur = pTransproj.a1 / pTransproj.a2;
 
@@ -129,6 +152,7 @@ __global__ void d_calc_analytic_jacobian(float* jacobian, float *residual, int *
 
         float d11[2], d21[2], d12[2], d22[2];
 
+        // TODO oskar: So these four derivatives are the derivatives of the four closest pixels?
         d_derivative(d11, grayCurImg, x1, y1, w, h);
         d_derivative(d21, grayCurImg, x2, y1, w, h);
         d_derivative(d12, grayCurImg, x1, y2, w, h);
@@ -234,7 +258,7 @@ void calcTDistWeighted_R(float * d_residual, int n, int w, int h, float &initSca
  */
 void calcResidualAndJacobian(float *d_jacobian, float *d_residual, int *d_n, float &tdistInitScale,float *d_visualResidual,
   float *d_grayPreImg, float *d_depthPreImg, float *d_grayCurImg,
-  Vector6f xi, Matrix3f K, int w, int h, ResidualWeight wType) {
+  Vector6f xi, Matrix3f K, int w, int h, ResidualWeight wType) { // TODO oskar: Maybe we should store the Matrix3f K somewhere in this class. And all of its levels since its gonna be the same for all.
 
   AnalyticJacobianStuff stuff;
   Matrix3f R; Vector3f t; convertSE3ToTf(xi, R, t); // converts the data in xi and stores it in R and t, using Sophus::SE3f::exp() function
