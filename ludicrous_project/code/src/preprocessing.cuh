@@ -227,6 +227,220 @@ __global__  void gaussFilter2D_vertical_CUDA_kernel(
   data_out[p] = result / ksum;
 }
 
+//############################################################################
+__global__  void gaussFilter2D_horizontal_CUDA_kernel_nonzero(
+                                            const float  *data_in,
+                                            float        *data_out,
+                                            int          width,
+                                            int          height,
+                                            float        sigma,
+                                            int          radius,
+                                            int          borderMethod )
+{
+  // Get the 2D-coordinate of the pixel of the current thread
+  const int   x = blockIdx.x * blockDim.x + threadIdx.x;
+  const int   y = blockIdx.y * blockDim.y + threadIdx.y;
+
+  // If the 2D position is outside the image, do nothing
+  if ( (x >= width) || (y >= height) )
+    return;
+
+
+  //##########################################################################
+  //  Padding #radius pixels around the 2D CUDA block into shared memory
+  //##########################################################################
+
+  // Copy data into shared memory
+  // (Size gets determined by CUDA execution arguments)
+  extern __shared__ float  data[];
+
+  // Copy the pixelwise values into the shared memory
+  //   p      = Current pixel's position in the global memory
+  //   pLocal = Current pixel's position in the shared memory
+  int     bWidthPadded = blockDim.x + 2*radius;
+  int     pLocal       = threadIdx.y * bWidthPadded + threadIdx.x + radius;
+  int     p            = y * width + x;
+
+
+
+  // Directly copy all non boundary pixels
+  data[ pLocal ] = data_in[ p ];
+
+  //-------------------  Left border of the 2D CUDA block  -------------------
+  if ( threadIdx.x == 0 )
+  {
+    for ( int ix=radius; ix>=0; ix-- )
+    {
+      int   posLocal = pLocal - ix;
+      int   pos      = p      - ix;
+
+      // Left border of the image
+      if ( x-ix < 0 )
+      {
+        if ( borderMethod == BORDER_ZERO )            //Zero-padding
+          data[ posLocal ] = 0;
+        else if ( borderMethod == BORDER_REPLICATE )  //Copy nearest pixel
+          data[ posLocal ] = data_in[ y*width+0 ];
+      }
+      else
+        data[ posLocal ] = data_in[ pos ];            //Normal copy of the pixel
+    }
+  }
+  //----------------------- Right border -----------------------
+  if ( threadIdx.x == blockDim.x-1 )
+  {
+    for ( int ix=radius; ix>=0; ix-- )
+    {
+      int   posLocal = pLocal + ix;
+      int   pos      = p      + ix;
+
+      // Right border of the image
+      if ( x+ix >= width )
+      {
+        if ( borderMethod == BORDER_ZERO )            //Zero-padding
+          data[ posLocal ] = 0;
+        else if ( borderMethod == BORDER_REPLICATE )  //Copy nearest pixel
+          data[ posLocal ] = data_in[ y*width+width-1 ];
+      }
+      else
+        data[ posLocal ] = data_in[ pos ];            //Normal copy of the pixel
+    }
+  }
+
+  //Synchronize - wait until the whole subarray is in the shared memory
+  __syncthreads();
+
+
+
+  float   result = 0.0f;
+  float   ksum   = 0.0f;
+
+  // Note that we do not need to check wether we are at an image border
+  // because we already padded the surrounding data in the shared memory
+  // (qLocal = moving position in the sub-window)
+  for ( int dx=-radius; dx<=radius; dx++ )
+  {
+    int     qLocal   = (int)threadIdx.y * bWidthPadded +
+                       (int)threadIdx.x + radius + dx;
+
+    float   exponent = -(dx*dx) / (2.0f*sigma*sigma);
+    float   kernel   = 1.0f / ( sqrtf( 2.0f * M_PI ) * sigma ) * __expf( exponent );
+
+    result += kernel * data[qLocal];
+    ksum   += ( data[qLocal] != 0 ? kernel : 0);
+  }
+  data_out[p] = result / ksum;
+}
+
+
+
+
+
+//############################################################################
+__global__  void gaussFilter2D_vertical_CUDA_kernel_nonzero(
+                                            const float  *data_in,
+                                            float        *data_out,
+                                            int          width,
+                                            int          height,
+                                            float        sigma,
+                                            int          radius,
+                                            int          borderMethod )
+{
+  // Get the 2D-coordinate of the pixel of the current thread
+  const int   x = blockIdx.x * blockDim.x + threadIdx.x;
+  const int   y = blockIdx.y * blockDim.y + threadIdx.y;
+
+  // If the 2D position is outside the image, do nothing
+  if ( (x >= width) || (y >= height) )
+    return;
+
+
+  //##########################################################################
+  //  Padding #radius pixels around the 2D CUDA block into shared memory
+  //##########################################################################
+
+  // Copy data into shared memory
+  // (Size gets determined by CUDA execution arguments)
+  extern __shared__ float  data[];
+
+  // Copy the pixelwise values into the shared memory
+  //   p      = Current pixel's position in the global memory
+  //   pLocal = Current pixel's position in the shared memory
+  int     pLocal = (threadIdx.y + radius) * blockDim.x + threadIdx.x;
+  int     p      = y * width + x;
+
+
+
+  // Directly copy all non boundary pixels
+  data[ pLocal ] = data_in[ p ];
+
+  //-------------------  Upper border of the 2D CUDA block  -------------------
+  if ( threadIdx.y == 0 )
+  {
+    for ( int iy=radius; iy>=0; iy-- )
+    {
+      int   posLocal = pLocal - iy * blockDim.x;
+      int   pos      = p      - iy * width;
+
+      // Upper border of the image
+      if ( y-iy < 0 )
+      {
+        if ( borderMethod == BORDER_ZERO )            //Zero-padding
+          data[ posLocal ] = 0;
+        else if ( borderMethod == BORDER_REPLICATE )  //Copy nearest pixel
+          data[ posLocal ] = data_in[ 0*width+x ];
+      }
+      else
+        data[ posLocal ] = data_in[ pos ];            //Normal copy of the pixel
+    }
+  }
+  //----------------------- Lower border -----------------------
+  if ( threadIdx.y == blockDim.y-1 )
+  {
+    for ( int iy=radius; iy>=0; iy-- )
+    {
+      int   posLocal = pLocal + iy * blockDim.x;
+      int   pos      = p      + iy * width;
+
+      // Lower border of the image
+      if ( y+iy >= height )
+      {
+        if ( borderMethod == BORDER_ZERO )            //Zero-padding
+          data[ posLocal ] = 0;
+        else if ( borderMethod == BORDER_REPLICATE )  //Copy nearest pixel
+          data[ posLocal ] = data_in[ (height-1)*width+x ];
+      }
+      else
+        data[ posLocal ] = data_in[ pos ];            //Normal copy of the pixel
+    }
+  }
+
+
+  //Synchronize - wait until the whole subarray is in the shared memory
+  __syncthreads();
+
+
+
+  float   result = 0.0f;
+  float   ksum   = 0.0f;
+
+  // Note that we do not need to check wether we are at an image border
+  // because we already padded the surrounding data in the shared memory
+  // (qLocal = moving position in the sub-window)
+  for ( int dy=-radius; dy<=radius; dy++ )
+  {
+    int     qLocal   = (int)(threadIdx.y + radius + dy) * blockDim.x +
+                       (int)threadIdx.x;
+
+    float   exponent = -(dy*dy) / (2.0f*sigma*sigma);
+    float   kernel   = 1.0f / ( sqrtf( 2.0f * M_PI ) * sigma ) * __expf( exponent );
+
+    result += kernel * data[qLocal];
+    ksum   += ( data[qLocal] != 0 ? kernel : 0); //This line makes zero value pixels non-contributing to final output
+  }
+  data_out[p] = result / ksum;
+}
+
 
 
 
@@ -239,7 +453,8 @@ void  gaussFilter2D_CUDA( const float   *img_src,
                           int           channels,
                           float         sigma,
                           int           radius,
-                          int           borderMethod )
+                          int           borderMethod ,
+                          bool          ignoreZeros)
 {
   // Reserve shared memory for the block + "radius" padding pixels at each border
   // Last term is some extra buffer (function parameters, template arguments, ..)
@@ -280,15 +495,33 @@ void  gaussFilter2D_CUDA( const float   *img_src,
   {
     int   offset = width * height * ch;
 
-    gaussFilter2D_horizontal_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize >>>(
-                             &img_src[offset], d_tmp,
-                             width, height, sigma, radius, borderMethod );
-    cudaDeviceSynchronize();
+    // If ignoreZeros is true, zero values of the image will not contribute in the gaussian filter
+    if(!ignoreZeros)
+    {
+        gaussFilter2D_horizontal_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize >>>(
+                                 &img_src[offset], d_tmp,
+                                 width, height, sigma, radius, borderMethod );
+        cudaDeviceSynchronize();
 
-    gaussFilter2D_vertical_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize >>>(
-                             d_tmp, &img_dst[offset],
-                             width, height, sigma, radius, borderMethod );
-    cudaDeviceSynchronize();
+        gaussFilter2D_vertical_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize >>>(
+                                 d_tmp, &img_dst[offset],
+                                 width, height, sigma, radius, borderMethod );
+        cudaDeviceSynchronize();
+    }
+    else
+    {
+        gaussFilter2D_horizontal_CUDA_kernel_nonzero<<< dimGrid, dimBlock, sharedMemSize >>>(
+                                 &img_src[offset], d_tmp,
+                                 width, height, sigma, radius, borderMethod );
+        cudaDeviceSynchronize();
+
+        gaussFilter2D_vertical_CUDA_kernel_nonzero<<< dimGrid, dimBlock, sharedMemSize >>>(
+                              d_tmp, &img_dst[offset],
+                              width, height, sigma, radius, borderMethod );
+        cudaDeviceSynchronize();
+
+
+    }
   }
   // CHECK_FOR_CUDA_ERRORS( "gaussFilter2D_CUDA" );
 
@@ -408,7 +641,8 @@ void  imresize_CUDA( const float   *pImgSrc,
                      int           src_height,
                      int           dst_width,
                      int           dst_height,
-                     int           channels )
+                     int           channels ,
+                     bool          ignoreZeros)
 {
   //DEBUG
   //printf( "imgSrc: %dx%dx%d -> imgDst: %dx%dx%d\n",
@@ -480,7 +714,7 @@ void  imresize_CUDA( const float   *pImgSrc,
 
     // Run Gauss filtering
     gaussFilter2D_CUDA( pImgSrc, I_gauss, src_width, src_height, channels,
-                        sigma, radius, BORDER_REPLICATE );
+                        sigma, radius, BORDER_REPLICATE , ignoreZeros);
     cudaDeviceSynchronize();
 
 

@@ -1,5 +1,6 @@
 #include <Eigen/Dense>
 #include "preprocessing.cuh"
+// #include <string>
 
 enum SolvingMethod { GAUSS_NEWTON, LEVENBERG_MARQUARDT, GRADIENT_DESCENT };
 // enum DerivativeMethod { ANALYTIC, NUMERIC };
@@ -7,7 +8,7 @@ enum ResidualWeight { NONE, HUBER, TDIST };
 
 class Tracker {
 private:
-  struct PyramidLevel { float *gray, *depth, *dx, *dy; };
+  struct PyramidLevel { float *gray, *depth, *gray_dx, *gray_dy; };
 
 public:
   /**
@@ -70,10 +71,10 @@ public:
       cudaMalloc(&d_prev[l].gray, lw*lh*sizeof(float)); CUDA_CHECK;
       cudaMalloc(&d_cur [l].depth, lw*lh*sizeof(float)); CUDA_CHECK;
       cudaMalloc(&d_prev[l].depth, lw*lh*sizeof(float)); CUDA_CHECK;
-      cudaMalloc(&d_cur [l].dx, lw*lh*sizeof(float)); CUDA_CHECK;
-      cudaMalloc(&d_prev[l].dx, lw*lh*sizeof(float)); CUDA_CHECK;
-      cudaMalloc(&d_cur [l].dy, lw*lh*sizeof(float)); CUDA_CHECK;
-      cudaMalloc(&d_prev[l].dy, lw*lh*sizeof(float)); CUDA_CHECK;
+      cudaMalloc(&d_cur [l].gray_dx, lw*lh*sizeof(float)); CUDA_CHECK;
+      cudaMalloc(&d_prev[l].gray_dx, lw*lh*sizeof(float)); CUDA_CHECK;
+      cudaMalloc(&d_cur [l].gray_dy, lw*lh*sizeof(float)); CUDA_CHECK;
+      cudaMalloc(&d_prev[l].gray_dy, lw*lh*sizeof(float)); CUDA_CHECK;
     }
 
     // Student-T weights allocation // TODO: shouldn't this be a pyramid? Or is it just allocated in excess for higher levels?
@@ -95,10 +96,15 @@ public:
     //   int lh = h / (1 << l);
     //   cv::Mat mTest(lh, lw, CV_32FC1);
     //   float *prev = new float[lw*lh];
+    //   //DEPTH.. values are probably not in the correct range.. neither [0,1] nor [0,255]
+    //   cudaMemcpy(prev, d_prev[l].depth, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
+    //   convert_layered_to_mat(mTest, prev);
+    //   showImage( "Depth: " + std::to_string(l), mTest, 100, 100); //cv::waitKey(0);
+    //   //GRAY
     //   cudaMemcpy(prev, d_prev[l].gray, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
     //   convert_layered_to_mat(mTest, prev);
-    //   showImage("Pyramid", mTest, 100, 100); cv::waitKey(0);
-    //   cvDestroyAllWindows();
+    //   showImage( "Gray: " + std::to_string(l), mTest, 300, 100); //cv::waitKey(0);
+    //   //cvDestroyAllWindows();
     // }
   }
 
@@ -121,10 +127,10 @@ public:
       cudaFree(d_prev[l].gray); CUDA_CHECK;
       cudaFree(d_cur [l].depth); CUDA_CHECK;
       cudaFree(d_prev[l].depth); CUDA_CHECK;
-      cudaFree(d_cur [l].dx); CUDA_CHECK;
-      cudaFree(d_prev[l].dx); CUDA_CHECK;
-      cudaFree(d_cur [l].dy); CUDA_CHECK;
-      cudaFree(d_prev[l].dy); CUDA_CHECK;
+      cudaFree(d_cur [l].gray_dx); CUDA_CHECK;
+      cudaFree(d_prev[l].gray_dx); CUDA_CHECK;
+      cudaFree(d_cur [l].gray_dy); CUDA_CHECK;
+      cudaFree(d_prev[l].gray_dy); CUDA_CHECK;
     }
 
     if (weightType == TDIST) {
@@ -195,15 +201,19 @@ private:
     for (int l = 1; l <= maxLevel; l++) {
       lw = w / (1 << l); // bitwise operator to divide by 2**l
       lh = h / (1 << l);
-      imresize_CUDA(d_img[l-1].gray, d_img[l].gray, 2*lw, 2*lh, lw, lh, 1);
-      imresize_CUDA(d_img[l-1].depth, d_img[l].depth, 2*lw, 2*lh, lw, lh, 1);
+      imresize_CUDA(d_img[l-1].gray, d_img[l].gray, 2*lw, 2*lh, lw, lh, 1, false);
+      imresize_CUDA(d_img[l-1].depth, d_img[l].depth, 2*lw, 2*lh, lw, lh, 1, false);
     }
 
     for (int l = 0; l <= maxLevel; l++) {
       lw = w / (1 << l); // bitwise operator to divide by 2**l
       lh = h / (1 << l);
       // compute derivatives!!
+
+
     }
+
+
   };
 
 };
