@@ -479,7 +479,7 @@ void  imresize_CUDA( const float   *pImgSrc,
     //        scaleFactor, sigma, radius );
 
     // Run Gauss filtering
-    gaussFilter2D_CUDA( pImgSrc, pImgDst, src_width, src_height, channels,
+    gaussFilter2D_CUDA( pImgSrc, I_gauss, src_width, src_height, channels,
                         sigma, radius, BORDER_REPLICATE );
     cudaDeviceSynchronize();
 
