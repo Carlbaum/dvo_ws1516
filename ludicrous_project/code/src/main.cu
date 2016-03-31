@@ -24,6 +24,8 @@ const int BORDER_REPLICATE = 2;
 
 int main(int argc, char *argv[]) {
 
+    cudaDeviceSynchronize();  CUDA_CHECK;
+    
     // Get information about the GPU
     cudaGetDevice(&devID); CUDA_CHECK;
     cudaGetDeviceProperties(&props, devID); CUDA_CHECK;
@@ -67,6 +69,10 @@ int main(int argc, char *argv[]) {
     // allocate raw input intensity and depth arrays
     float *imgGray = new float[(size_t)w*h];
     float *imgDepth = new float[(size_t)w*h];
+
+    // convert opencv images to arrays
+    convert_mat_to_layered(imgGray, mGray);
+    convert_mat_to_layered(imgDepth, mDepth);
 
     // initialize the tracker
     Tracker tracker(imgGray, imgDepth, w, h, K);

@@ -88,6 +88,18 @@ public:
 
     // Fill pyramid of the first frame. Already as previous frame since align fills the current frame d_cur and only swaps at the end.
     fill_pyramid(d_prev, grayFirstFrame, depthFirstFrame);
+
+    // // Debug
+    // for (int l = 0; l < maxLevel; l++) {
+    //   int lw = w / (1 << l); // bitwise operator to divide by 2**l
+    //   int lh = h / (1 << l);
+    //   cv::Mat mTest(lh, lw, CV_32FC1);
+    //   float *prev = new float[lw*lh];
+    //   cudaMemcpy(prev, d_prev[l].gray, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
+    //   convert_layered_to_mat(mTest, prev);
+    //   showImage("Pyramid", mTest, 100, 100); cv::waitKey(0);
+    //   cvDestroyAllWindows();
+    // }
   }
 
   /**
