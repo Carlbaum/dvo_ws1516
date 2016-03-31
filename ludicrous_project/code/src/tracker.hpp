@@ -32,7 +32,7 @@ public:
     int iterationsCount = 20,
     SolvingMethod solvingMethod = GAUSS_NEWTON,
     ResidualWeight weightType = NONE
-    bool useCUBLAS = true,
+    // bool useCUBLAS = true,
   ) :
     w(w),
     h(h),
@@ -45,10 +45,10 @@ public:
     frameComputationTime(0),
     stepCount(0),
     lastFrameXi(Vector6f::Zero()),
-    xi(Vector6f::Zero()),
-    useCUBLAS(useCUBLAS)
+    xi(Vector6f::Zero())
+    // useCUBLAS(useCUBLAS)
   {
-    if (useCUBLAS) cublasCreate(&handle);
+    // if (useCUBLAS) cublasCreate(&handle);
 
     // Create Buffers
     cudaMalloc(&d_J, w*h*6*sizeof(float)); CUDA_CHECK;
@@ -94,7 +94,7 @@ public:
    * destructor
    */
   ~Tracker() {
-    if (useCUBLAS) cublasDestroy(handle);
+    // if (useCUBLAS) cublasDestroy(handle);
 
     cudaFree(d_J); CUDA_CHECK;
     cudaFree(d_r); CUDA_CHECK;
@@ -150,7 +150,7 @@ private:
   ResidualWeight weightType; // enum type of possible residual weighting. Defined in *_jacobian.cuh
   bool useCUBLAS; // TODO: option to NOT use cuBLAS
 
-  cublasHandle_t handle; // not used if useCUBLAS = false
+  // cublasHandle_t handle; // not used if useCUBLAS = false
 
   // device variables
   float *d_J; // device Jacobian array for ALL residuals
@@ -183,8 +183,8 @@ private:
     for (int l = 1; l <= maxLevel; l++) {
       lw = w / (1 << l); // bitwise operator to divide by 2**l
       lh = h / (1 << l);
-      downsampleGray(d_img[l].gray, d_img[l-1].gray, lw, lh);
-      downsampleDepth(d_img[l].depth, d_img[l-1].depth, lw, lh);
+      imresize_CUDA(d_img[l-1].gray, d_img[l].gray, 2*lw, 2*lh, lw, lh, 1);
+      imresize_CUDA(d_img[l-1].depth, d_img[l].depth, 2*lw, 2*lh, lw, lh, 1);
     }
 
     for (int l = 0; l <= maxLevel; l++) {
