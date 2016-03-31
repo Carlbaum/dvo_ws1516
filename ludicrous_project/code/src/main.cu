@@ -7,11 +7,29 @@
 #include <iostream>
 #include "tum_benchmark.hpp"
 #include "dataset.hpp"
-#include "tracker.hpp"
 
 using namespace std;
 
+// global variables
+int             devID;
+cudaDeviceProp  props;
+int g_CUDA_maxSharedMemSize;
+const int g_CUDA_blockSize2DX = 16;
+const int g_CUDA_blockSize2DY = 16;
+const int BORDER_ZERO = 1;
+const int BORDER_REPLICATE = 2;
+
+#include "tracker.hpp"
+
+
 int main(int argc, char *argv[]) {
+
+    // Get information about the GPU
+    cudaGetDevice(&devID); CUDA_CHECK;
+    cudaGetDeviceProperties(&props, devID); CUDA_CHECK;
+    g_CUDA_maxSharedMemSize = props.sharedMemPerBlock;
+
+
 
     // ---------- PARAMETERS ----------
 
@@ -51,7 +69,7 @@ int main(int argc, char *argv[]) {
     float *imgDepth = new float[(size_t)w*h];
 
     // initialize the tracker
-    // Tracker tracker(imgGray, imgDepth, w, h, K);
+    Tracker tracker(imgGray, imgDepth, w, h, K);
 
     // TODO: WE NEED TO INITIALIZE THE IMAGES BEFORE THE MAIN LOOP
 
