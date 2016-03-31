@@ -1,6 +1,6 @@
 #include <Eigen/Dense>
 #include "preprocessing.cuh"
-// #include <string>
+// #include <string> //only needed for our 'debugging'
 
 enum SolvingMethod { GAUSS_NEWTON, LEVENBERG_MARQUARDT, GRADIENT_DESCENT };
 // enum DerivativeMethod { ANALYTIC, NUMERIC };
@@ -90,20 +90,28 @@ public:
     // Fill pyramid of the first frame. Already as previous frame since align fills the current frame d_cur and only swaps at the end.
     fill_pyramid(d_prev, grayFirstFrame, depthFirstFrame);
 
-    // // Debug
+    // Debug
     // for (int l = 0; l < maxLevel; l++) {
     //   int lw = w / (1 << l); // bitwise operator to divide by 2**l
     //   int lh = h / (1 << l);
     //   cv::Mat mTest(lh, lw, CV_32FC1);
     //   float *prev = new float[lw*lh];
-    //   //DEPTH.. values are probably not in the correct range.. neither [0,1] nor [0,255]
+    //   //DEPTH
     //   cudaMemcpy(prev, d_prev[l].depth, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
     //   convert_layered_to_mat(mTest, prev);
-    //   showImage( "Depth: " + std::to_string(l), mTest, 100, 100); //cv::waitKey(0);
+    //   showImage( "Depth: " + std::to_string(l), mTest, 100, 100); //cv::waitKey(0); // TODO oskar: .. values are probably not in the correct range.. neither [0,1] nor [0,255].. result is just black n white.. should be gray scale
     //   //GRAY
     //   cudaMemcpy(prev, d_prev[l].gray, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
     //   convert_layered_to_mat(mTest, prev);
     //   showImage( "Gray: " + std::to_string(l), mTest, 300, 100); //cv::waitKey(0);
+    //   //DERIVATIVES dx
+    //   cudaMemcpy(prev, d_prev[l].gray_dx, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
+    //   convert_layered_to_mat(mTest, prev);
+    //   showImage( "DX: " + std::to_string(l), mTest, 300, 100); //cv::waitKey(0);
+    //   //DERIVATIVES dx
+    //   cudaMemcpy(prev, d_prev[l].gray_dy, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
+    //   convert_layered_to_mat(mTest, prev);
+    //   showImage( "DY: " + std::to_string(l), mTest, 300, 100); //cv::waitKey(0);
     //   //cvDestroyAllWindows();
     // }
   }
@@ -145,9 +153,13 @@ public:
    * @return          Minimal transformation representation in twist coordinates. Optimal warp of the previous gray and depth onto the new (current) image.
    */
   Vector6f align(float *grayCur, float *depthCur) {
+    fill_pyramid(d_cur, grayCur, depthCur);
+
+    // swap the pointers so we place image in the correct buffer next time this function is called
+    std::vector<PyramidLevel> temp_swap = d_cur; d_cur = d_prev; d_prev = temp_swap;
     return Vector6f::Zero();
 
-    ++stepCount;
+    //++stepCount;
   }
 
   double averageTime() { return totalComputationTime / stepCount; }
@@ -209,10 +221,32 @@ private:
       lw = w / (1 << l); // bitwise operator to divide by 2**l
       lh = h / (1 << l);
       // compute derivatives!!
-
-
+      image_derivatives_CUDA(d_img[l].gray,d_img[l].gray_dx,d_img[l].gray_dy,lw,lh);
     }
-
+    // Debug
+    // for (int l = 0; l < maxLevel; l++) {
+    //   int lw = w / (1 << l); // bitwise operator to divide by 2**l
+    //   int lh = h / (1 << l);
+    //   cv::Mat mTest(lh, lw, CV_32FC1);
+    //   float *prev = new float[lw*lh];
+    //   //DEPTH
+    //   cudaMemcpy(prev, d_img[l].depth, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
+    //   convert_layered_to_mat(mTest, prev);
+    //   showImage( "Depth: " + std::to_string(l), mTest, 100, 100); //cv::waitKey(0); // TODO oskar: .. values are probably not in the correct range.. neither [0,1] nor [0,255].. result is just black n white.. should be gray scale
+    //   //GRAY
+    //   cudaMemcpy(prev, d_img[l].gray, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
+    //   convert_layered_to_mat(mTest, prev);
+    //   showImage( "Gray: " + std::to_string(l), mTest, 300, 100); //cv::waitKey(0);
+    //   //DERIVATIVES dx
+    //   cudaMemcpy(prev, d_img[l].gray_dx, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
+    //   convert_layered_to_mat(mTest, prev);
+    //   showImage( "DX: " + std::to_string(l), mTest, 300, 100); //cv::waitKey(0);
+    //   //DERIVATIVES dx
+    //   cudaMemcpy(prev, d_img[l].gray_dy, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
+    //   convert_layered_to_mat(mTest, prev);
+    //   showImage( "DY: " + std::to_string(l), mTest, 300, 100); cv::waitKey(0);
+    //   cvDestroyAllWindows();
+    // }
 
   };
 

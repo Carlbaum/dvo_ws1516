@@ -25,7 +25,7 @@ const int BORDER_REPLICATE = 2;
 int main(int argc, char *argv[]) {
 
     cudaDeviceSynchronize();  CUDA_CHECK;
-    
+
     // Get information about the GPU
     cudaGetDevice(&devID); CUDA_CHECK;
     cudaGetDeviceProperties(&props, devID); CUDA_CHECK;
@@ -86,18 +86,28 @@ int main(int argc, char *argv[]) {
     */
 
 
+
     std::cout << "Hello world" << std::endl;
     for (int i = 1; i < dataset.frames.size(); ++i) {
-        // Load in the images of the next frame
-        cv::Mat mGray = loadIntensity(dataset.frames[i].colorPath);
-        cv::Mat mDepth = loadDepth(dataset.frames[i].depthPath);
-
         Timer timer; timer.start();
+
+        // Load in the images of the next frame
+        mGray = loadIntensity(dataset.frames[i].colorPath);
+        mDepth = loadDepth(dataset.frames[i].depthPath);
+
+        // convert opencv images to arrays
+        convert_mat_to_layered(imgGray, mGray);
+        convert_mat_to_layered(imgDepth, mDepth);
+
+
         // TODO: THIS IS WHERE WE SHOULD CALL THE ALIGN FUNCITON
+        tracker.align(imgGray, imgDepth);
+
         timer.end();  float t = timer.get();  // elapsed time in seconds
-        cout << "Time of image " << i  << ": " << t*1000 << " ms" << endl;
+
+        cout << "Time of loading + doing calculations on image #" << i  << ": " << t*1000 << " ms" << endl;
         // show input image
-        //showImage("Input " + std::to_string(i), gray, 100+20*i, 100+10*i);  // show at position (x_from_left=100,y_from_above=100)
+        // showImage("Input " + std::to_string(i), mGray, 100+20*i, 100+10*i);  // show at position (x_from_left=100,y_from_above=100)
     }
 
 

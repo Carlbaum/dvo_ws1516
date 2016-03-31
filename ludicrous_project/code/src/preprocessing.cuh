@@ -744,3 +744,39 @@ void  imresize_CUDA( const float   *pImgSrc,
 
   cudaDeviceSynchronize();
 }
+
+__global__ void compute_image_derivatives_CUDA (const float *input, float *dX, float *dY, int w, int h)
+{
+    // TODO oskar: We have to clean this up.. for now it's pretty much copied straight from OldProject2 but I didn't like that we defined as size_t and then casted back to int
+    /*size_t*/int x = threadIdx.x + blockDim.x * blockIdx.x;
+    /*size_t*/int y = threadIdx.y + blockDim.y * blockIdx.y;
+    /*size_t*/int ind = x + y * w;
+
+    if (x<w && y<h) {
+        dX[ind] = (input[min(/*(int)*/(x+1), w-1) + w* /*(int)*/y]-input[max(/*(int)*/(x-1), 0) + w* /*(int)*/ y])*0.5f;
+        dY[ind] = (input[/*(int)*/x + w*min(/*(int)*/(y+1), h-1)]-input[/*(int)*/x + w*max(/*(int)*/(y-1), 0)])*0.5f;
+    }
+
+}
+
+
+void  image_derivatives_CUDA( const float   *pImgSrc,
+                              float         *pImgDX,
+                              float         *pImgDY,
+                              int           width,
+                              int           height)
+{
+    // Block = 2D array of threads
+    dim3  dimBlock( g_CUDA_blockSize2DX, g_CUDA_blockSize2DY, 1 );
+
+
+    // Grid = 2D array of blocks
+    // gridSizeX = ceil( width / nBlocksX )
+    // gridSizeY = ceil( height / nBlocksX )
+    int   gridSizeX = (width  + dimBlock.x-1) / dimBlock.x;
+    int   gridSizeY = (height + dimBlock.y-1) / dimBlock.y;
+    dim3  dimGrid( gridSizeX, gridSizeY, 1 );
+
+    compute_image_derivatives_CUDA <<<dimGrid, dimBlock>>> (pImgSrc, pImgDX, pImgDY, width, height);
+    cudaDeviceSynchronize();
+}
