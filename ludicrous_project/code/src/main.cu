@@ -40,6 +40,13 @@ int main(int argc, char *argv[]) {
     getParam("path", path, argc, argv);
     std::cout << "Path to dataset: " << path << std::endl;
 
+    // gives the number of levels of the pyramids
+    int numberOfLevels = 4;
+    getParam("numberOfLevels", numberOfLevels, argc, argv);
+    numberOfLevels = std::max(1, numberOfLevels);
+    numberOfLevels = std::min(10, numberOfLevels);
+    std::cout << "number of levels in pyramids: " << numberOfLevels << std::endl;
+
     /* FROM THE EXERCISES, DON'T THINK WE NEED THIS
         // input image
         string image = "";
@@ -75,7 +82,7 @@ int main(int argc, char *argv[]) {
     convert_mat_to_layered(imgDepth, mDepth);
 
     // initialize the tracker
-    Tracker tracker(imgGray, imgDepth, w, h, K);
+    Tracker tracker(imgGray, imgDepth, w, h, K, 0, numberOfLevels-1);
 
     // TODO: WE NEED TO INITIALIZE THE IMAGES BEFORE THE MAIN LOOP
 
@@ -84,8 +91,6 @@ int main(int argc, char *argv[]) {
     poses.push_back(Matrix4f::Identity());
     timestamps.push_back(dataset.frames[0].timestamp);
     */
-
-
 
     std::cout << "Hello world" << std::endl;
     for (int i = 1; i < dataset.frames.size(); ++i) {
@@ -98,7 +103,6 @@ int main(int argc, char *argv[]) {
         // convert opencv images to arrays
         convert_mat_to_layered(imgGray, mGray);
         convert_mat_to_layered(imgDepth, mDepth);
-
 
         // TODO: THIS IS WHERE WE SHOULD CALL THE ALIGN FUNCITON
         tracker.align(imgGray, imgDepth);

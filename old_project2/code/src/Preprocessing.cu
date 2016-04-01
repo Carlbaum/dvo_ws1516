@@ -98,16 +98,16 @@ void  buildDrvPyramids(float **img, float **d_dXPy, float **d_dYPy, int lvl, int
 
 void buildKPyramid (Eigen::Matrix3f *KPy, int lvl) {
 	for (int i=0; i<lvl-1; i++) {
-		KPy[i+1] << KPy[i](0,0)/2.0f, 0.0, (KPy[i](0,2)+0.5f)/2.0f - 0.5f,
-					0.0, KPy[i](1,1)/2.0f, (KPy[i](1,2)+0.5)/2.0f - 0.5f,
-					0.0, 0.0, 1.0f;
+		KPy[i+1] << KPy[i](0,0)/2.0f, 0.0				, (KPy[i](0,2)+0.5f)/2.0f - 0.5f,
+					0.0				, KPy[i](1,1)/2.0f	, (KPy[i](1,2)+0.5f)/2.0f - 0.5f,
+					0.0				, 0.0				, 1.0f;
 	}
 }
 
 void buildIKPyramid (Eigen::Matrix3f *iKPy, Eigen::Matrix3f *KPy, int lvl) {
 	for (int i=0; i<lvl; i++) {
-		iKPy[i] << 1.0f/KPy[i](0,0), 0.0, -(KPy[i](0,2)/KPy[i](0,0)),
-				   0.0, 1.0f/KPy[i](1,1), -(KPy[i](1,2)/KPy[i](1,1)),
-				   0.0, 0.0, 1.0f;
+		iKPy[i] << 1.0f/KPy[i](0,0)	, 0.0				, -(KPy[i](0,2)/KPy[i](0,0)),
+				   0.0				, 1.0f/KPy[i](1,1)	, -(KPy[i](1,2)/KPy[i](1,1)),
+				   0.0				, 0.0				, 1.0f;
 	}
 }

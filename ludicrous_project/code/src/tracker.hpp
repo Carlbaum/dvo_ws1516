@@ -1,5 +1,6 @@
 #include <Eigen/Dense>
 #include "preprocessing.cuh"
+#include "lieAlgebra.hpp"
 // #include <string> //only needed for our 'debugging'
 
 enum SolvingMethod { GAUSS_NEWTON, LEVENBERG_MARQUARDT, GRADIENT_DESCENT };
@@ -51,71 +52,26 @@ public:
   {
     // if (useCUBLAS) cublasCreate(&handle);
 
-    // Create Buffers
-    cudaMalloc(&d_J, w*h*6*sizeof(float)); CUDA_CHECK;
-    cudaMalloc(&d_r, w*h*sizeof(float)); CUDA_CHECK;
-    cudaMalloc(&d_b, 6*sizeof(float)); CUDA_CHECK;
-    cudaMalloc(&d_A, 6*6*sizeof(float)); CUDA_CHECK;
-    cudaMalloc(&d_error, sizeof(float)); CUDA_CHECK;
-    cudaMalloc(&d_visualResidual, w*h*sizeof(float)); CUDA_CHECK;
-    cudaMalloc(&d_n, sizeof(int)); CUDA_CHECK;
-
     // make pyramid vector large enough to hold all levels
     d_cur.resize(maxLevel+1);
     d_prev.resize(maxLevel+1);
-    // allocate pyramid vector levels in device memory
-    for (int l = 0; l <= maxLevel; l++) {
-      int lw = w / (1 << l);  // calculating bitwise the succesive powers of 2
-      int lh = h / (1 << l);
-      cudaMalloc(&d_cur [l].gray, lw*lh*sizeof(float)); CUDA_CHECK;
-      cudaMalloc(&d_prev[l].gray, lw*lh*sizeof(float)); CUDA_CHECK;
-      cudaMalloc(&d_cur [l].depth, lw*lh*sizeof(float)); CUDA_CHECK;
-      cudaMalloc(&d_prev[l].depth, lw*lh*sizeof(float)); CUDA_CHECK;
-      cudaMalloc(&d_cur [l].gray_dx, lw*lh*sizeof(float)); CUDA_CHECK;
-      cudaMalloc(&d_prev[l].gray_dx, lw*lh*sizeof(float)); CUDA_CHECK;
-      cudaMalloc(&d_cur [l].gray_dy, lw*lh*sizeof(float)); CUDA_CHECK;
-      cudaMalloc(&d_prev[l].gray_dy, lw*lh*sizeof(float)); CUDA_CHECK;
-    }
 
-    // Student-T weights allocation // TODO: shouldn't this be a pyramid? Or is it just allocated in excess for higher levels?
-    if (weightType == TDIST) {
-      cudaMalloc(&d_tdistWeightedSqSum, w*h*sizeof(float)); CUDA_CHECK;
-    }
+    // Create Buffers
+    allocateGPUMemory();
 
     // Intrinisc matrix (camera projection matrix)
-    Ks.resize(maxLevel+1);
-    Ks[0] = K;
-    for (int l = 1; l <= maxLevel; l++) { Ks[l] = downsampleK(Ks[l-1]); }
+    K_pyr.resize(maxLevel+1);
+    K_pyr_inv.resize(maxLevel+1);
+
+    K_pyr[0] = K;
+    K_pyr_inv[0] = invertKMat(K_pyr[0]);
+    for (int l = 1; l <= maxLevel; l++) {
+        K_pyr[l] = downsampleK(K_pyr[l-1]);
+        K_pyr_inv[l] = invertKMat(K_pyr[l]);
+   }
 
     // Fill pyramid of the first frame. Already as previous frame since align fills the current frame d_cur and only swaps at the end.
     fill_pyramid(d_prev, grayFirstFrame, depthFirstFrame);
-
-    // Debug
-    // for (int l = 0; l < maxLevel; l++) {
-    //   int lw = w / (1 << l); // bitwise operator to divide by 2**l
-    //   int lh = h / (1 << l);
-    //   cv::Mat mTest(lh, lw, CV_32FC1);
-    //   float *prev = new float[lw*lh];
-    //   //DEPTH
-    //   cudaMemcpy(prev, d_prev[l].depth, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
-    //   convert_layered_to_mat(mTest, prev);
-    //   double min, max;
-    //   cv::minMaxLoc(mTest, &min, &max);
-    //   showImage( "Depth: " + std::to_string(l), mTest/max, 100, 100); //cv::waitKey(0); // TODO oskar: .. values are probably not in the correct range.. neither [0,1] nor [0,255].. result is just black n white.. should be gray scale
-    //   //GRAY
-    //   cudaMemcpy(prev, d_prev[l].gray, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
-    //   convert_layered_to_mat(mTest, prev);
-    //   showImage( "Gray: " + std::to_string(l), mTest, 300, 100); //cv::waitKey(0);
-    //   //DERIVATIVES dx
-    //   cudaMemcpy(prev, d_prev[l].gray_dx, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
-    //   convert_layered_to_mat(mTest, prev);
-    //   showImage( "DX: " + std::to_string(l), mTest, 300, 100); //cv::waitKey(0);
-    //   //DERIVATIVES dx
-    //   cudaMemcpy(prev, d_prev[l].gray_dy, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
-    //   convert_layered_to_mat(mTest, prev);
-    //   showImage( "DY: " + std::to_string(l), mTest, 300, 100); //cv::waitKey(0);
-    //   //cvDestroyAllWindows();
-    }
   }
 
   /**
@@ -123,29 +79,7 @@ public:
    */
   ~Tracker() {
     // if (useCUBLAS) cublasDestroy(handle);
-
-    cudaFree(d_J); CUDA_CHECK;
-    cudaFree(d_r); CUDA_CHECK;
-    cudaFree(d_b); CUDA_CHECK;
-    cudaFree(d_A); CUDA_CHECK;
-    cudaFree(d_visualResidual); CUDA_CHECK;
-    cudaFree(d_error); CUDA_CHECK;
-    cudaFree(d_n); CUDA_CHECK;
-
-    for (int l = 0; l <= maxLevel; l++) {
-      cudaFree(d_cur [l].gray); CUDA_CHECK;
-      cudaFree(d_prev[l].gray); CUDA_CHECK;
-      cudaFree(d_cur [l].depth); CUDA_CHECK;
-      cudaFree(d_prev[l].depth); CUDA_CHECK;
-      cudaFree(d_cur [l].gray_dx); CUDA_CHECK;
-      cudaFree(d_prev[l].gray_dx); CUDA_CHECK;
-      cudaFree(d_cur [l].gray_dy); CUDA_CHECK;
-      cudaFree(d_prev[l].gray_dy); CUDA_CHECK;
-    }
-
-    if (weightType == TDIST) {
-      cudaFree(d_tdistWeightedSqSum); CUDA_CHECK;
-    }
+        deallocateGPUMemory();
   }
 
   /**
@@ -154,12 +88,27 @@ public:
    * @param  depthCur New (current) depth image of floats. It gets processed into a pyramid but its values are not actually used until the next call to align.
    * @return          Minimal transformation representation in twist coordinates. Optimal warp of the previous gray and depth onto the new (current) image.
    */
-  Vector6f align(float *grayCur, float *depthCur) {
-    fill_pyramid(d_cur, grayCur, depthCur);
+   Vector6f align(float *grayCur, float *depthCur) {
+       fill_pyramid(d_cur, grayCur, depthCur);
+
+       // Set the previous Xi as initial guess
+       frameXi = lastFrameXi;
+
+       // Calculate Rotation matrix and translation vector
+       // TODO: MAKE THAT FUNCTION
+       // check this out: convertSE3ToTf(xi, R, t);
+       convertSE3ToT(frameXi, R, t);
+       std::cout << R << std::endl;
+       convertTToSE3(frameXi, R, t);
+
+
+
+
+
 
     // swap the pointers so we place image in the correct buffer next time this function is called
     std::vector<PyramidLevel> temp_swap = d_cur; d_cur = d_prev; d_prev = temp_swap;
-    return Vector6f::Zero();
+    return frameXi;
 
     //++stepCount;
   }
@@ -195,10 +144,16 @@ private:
   std::vector<PyramidLevel> d_cur; // current vector of pointers to device pyramid level structures
   std::vector<PyramidLevel> d_prev; // previous vector of pointers to device pyramid level structures
   float *d_tdistWeightedSqSum; // Studendt-T weights for each residual. Has the size of the image. // TODO: shouldn't this be a pyramid? Or is it just allocated in excess for higher levels?
+  Matrix3f R;
+  Vector3f t;
 
   // host variables
-  std::vector<Matrix3f> Ks; // stores projection matrix and downsampled version
+  std::vector<Matrix3f> K_pyr; // stores projection matrix and downsampled version (intrinsic camera properties)
+  std::vector<Matrix3f> K_pyr_inv; // inverse K_pyr
+  //std::vector<Matrix3f> d_K_pyr;
+  //std::vector<Matrix3f> d_K_pyr_inv;
   Vector6f lastFrameXi; // TODO: keeps last(?) frame for some reason
+  Vector6f frameXi;
 
   /**
    * Copies the input image as the first pyramid level into the device and calculates the remaining levels upwards. Not to be used without access to private variables.
@@ -225,31 +180,88 @@ private:
       // compute derivatives!!
       image_derivatives_CUDA(d_img[l].gray,d_img[l].gray_dx,d_img[l].gray_dy,lw,lh);
     }
-    // Debug
-    // for (int l = 0; l < maxLevel; l++) {
-    //   int lw = w / (1 << l); // bitwise operator to divide by 2**l
-    //   int lh = h / (1 << l);
-    //   cv::Mat mTest(lh, lw, CV_32FC1);
-    //   float *prev = new float[lw*lh];
-    //   //DEPTH
-    //   cudaMemcpy(prev, d_img[l].depth, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
-    //   convert_layered_to_mat(mTest, prev);
-    //   showImage( "Depth: " + std::to_string(l), mTest, 100, 100); //cv::waitKey(0); // TODO oskar: .. values are probably not in the correct range.. neither [0,1] nor [0,255].. result is just black n white.. should be gray scale
-    //   //GRAY
-    //   cudaMemcpy(prev, d_img[l].gray, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
-    //   convert_layered_to_mat(mTest, prev);
-    //   showImage( "Gray: " + std::to_string(l), mTest, 300, 100); //cv::waitKey(0);
-    //   //DERIVATIVES dx
-    //   cudaMemcpy(prev, d_img[l].gray_dx, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
-    //   convert_layered_to_mat(mTest, prev);
-    //   showImage( "DX: " + std::to_string(l), mTest, 300, 100); //cv::waitKey(0);
-    //   //DERIVATIVES dx
-    //   cudaMemcpy(prev, d_img[l].gray_dy, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
-    //   convert_layered_to_mat(mTest, prev);
-    //   showImage( "DY: " + std::to_string(l), mTest, 300, 100); cv::waitKey(0);
-    //   cvDestroyAllWindows();
-    // }
+    //Debug
+/*    for (int l = 0; l < maxLevel; l++) {
+      int lw = w / (1 << l); // bitwise operator to divide by 2**l
+      int lh = h / (1 << l);
+      cv::Mat mTest(lh, lw, CV_32FC1);
+      float *prev = new float[lw*lh];
+      //DEPTH
+      cudaMemcpy(prev, d_img[l].depth, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
+      convert_layered_to_mat(mTest, prev);
+      double min, max;
+      cv::minMaxLoc(mTest, &min, &max);
+      showImage( "Depth: " + std::to_string(l), mTest/max, 100, 100); //cv::waitKey(0); // TODO oskar: .. values are probably not in the correct range.. neither [0,1] nor [0,255].. result is just black n white.. should be gray scale
+      //GRAY
+      cudaMemcpy(prev, d_img[l].gray, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
+      convert_layered_to_mat(mTest, prev);
+      showImage( "Gray: " + std::to_string(l), mTest, 300, 100); //cv::waitKey(0);
+      //DERIVATIVES dx
+      cudaMemcpy(prev, d_img[l].gray_dx, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
+      convert_layered_to_mat(mTest, prev);
+      showImage( "DX: " + std::to_string(l), mTest, 300, 100); //cv::waitKey(0);
+      //DERIVATIVES dx
+      cudaMemcpy(prev, d_img[l].gray_dy, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
+      convert_layered_to_mat(mTest, prev);
+      showImage( "DY: " + std::to_string(l), mTest, 300, 100); cv::waitKey(0);
+      //cvDestroyAllWindows();
+    }
+*/
+  }
 
-  };
+  void allocateGPUMemory() {
+      cudaMalloc(&d_J, w*h*6*sizeof(float)); CUDA_CHECK;
+      cudaMalloc(&d_r, w*h*sizeof(float)); CUDA_CHECK;
+      cudaMalloc(&d_b, 6*sizeof(float)); CUDA_CHECK;
+      cudaMalloc(&d_A, 6*6*sizeof(float)); CUDA_CHECK;
+      cudaMalloc(&d_error, sizeof(float)); CUDA_CHECK;
+      cudaMalloc(&d_visualResidual, w*h*sizeof(float)); CUDA_CHECK;
+      cudaMalloc(&d_n, sizeof(int)); CUDA_CHECK;
+
+      // allocate pyramid vector levels in device memory
+      for (int l = 0; l <= maxLevel; l++) {
+        int lw = w / (1 << l);  // calculating bitwise the succesive powers of 2
+        int lh = h / (1 << l);
+        cudaMalloc(&d_cur [l].gray, lw*lh*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_prev[l].gray, lw*lh*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_cur [l].depth, lw*lh*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_prev[l].depth, lw*lh*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_cur [l].gray_dx, lw*lh*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_prev[l].gray_dx, lw*lh*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_cur [l].gray_dy, lw*lh*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_prev[l].gray_dy, lw*lh*sizeof(float)); CUDA_CHECK;
+      }
+
+      // Student-T weights allocation // TODO: shouldn't this be a pyramid? Or is it just allocated in excess for higher levels?
+      if (weightType == TDIST) {
+        cudaMalloc(&d_tdistWeightedSqSum, w*h*sizeof(float)); CUDA_CHECK;
+      }
+  }
+
+  void deallocateGPUMemory() {
+      cudaFree(d_J); CUDA_CHECK;
+      cudaFree(d_r); CUDA_CHECK;
+      cudaFree(d_b); CUDA_CHECK;
+      cudaFree(d_A); CUDA_CHECK;
+      cudaFree(d_visualResidual); CUDA_CHECK;
+      cudaFree(d_error); CUDA_CHECK;
+      cudaFree(d_n); CUDA_CHECK;
+
+      for (int l = 0; l <= maxLevel; l++) {
+        cudaFree(d_cur [l].gray); CUDA_CHECK;
+        cudaFree(d_prev[l].gray); CUDA_CHECK;
+        cudaFree(d_cur [l].depth); CUDA_CHECK;
+        cudaFree(d_prev[l].depth); CUDA_CHECK;
+        cudaFree(d_cur [l].gray_dx); CUDA_CHECK;
+        cudaFree(d_prev[l].gray_dx); CUDA_CHECK;
+        cudaFree(d_cur [l].gray_dy); CUDA_CHECK;
+        cudaFree(d_prev[l].gray_dy); CUDA_CHECK;
+      }
+
+      if (weightType == TDIST) {
+        cudaFree(d_tdistWeightedSqSum); CUDA_CHECK;
+      }
+
+  }
 
 };
