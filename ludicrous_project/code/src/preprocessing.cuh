@@ -745,6 +745,14 @@ void  imresize_CUDA( const float   *pImgSrc,
   cudaDeviceSynchronize();
 }
 
+/**
+ * CUDA function. Takes in an image and returns its derivatives along both axes. Derivatives are centered in the inside and respectively sided on the edges.
+ * @param  input        input image 1D array with size w*h
+ * @param  dX           output image derivatives in horizontal direction as a 1D array
+ * @param  dY           output image derivatives in vertical direction as a 1D array
+ * @param  w            image width
+ * @param  h            image height
+ */
 __global__ void compute_image_derivatives_CUDA (const float *input, float *dX, float *dY, int w, int h)
 {
     int x = threadIdx.x + blockDim.x * blockIdx.x;
@@ -752,12 +760,21 @@ __global__ void compute_image_derivatives_CUDA (const float *input, float *dX, f
     int ind = x + y * w;
 
     if (x<w && y<h) {
+        // do centered derivatives where possible
+        // else do left or right-sided derivatives (on the edges)
         dX[ind] = ( input[ min(x+1,w-1) + w*y  ] - input[ max(x-1, 0) + w*y ] )*0.5f;
         dY[ind] = ( input[ x + w*min(y+1, h-1) ] - input[ x + w*max(y-1, 0) ] )*0.5f;
     }
 }
 
-
+/**
+ * Calls compute_image_derivatives_CUDA
+ * @param  *pImgSrc     Input image array of length w*h
+ * @param  *pImgDX      Output image array of horizontal derivatives
+ * @param  *pImgDY      Output image array of vertical derivatives
+ * @param  width
+ * @param  height
+ */
 void  image_derivatives_CUDA( const float   *pImgSrc,
                               float         *pImgDX,
                               float         *pImgDY,
