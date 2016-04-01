@@ -2,15 +2,33 @@
 #include <Eigen/Dense>
 #include "Exception.h"
 
+
 Matrix3f downsampleK(const Matrix3f K) {
   Matrix3f K_d = K;
-  K_d(0, 2) += 0.5; K_d(1, 2) += 0.5;
-  K_d.topLeftCorner(2, 3) *= 0.5;
-  K_d(0, 2) -= 0.5; K_d(1, 2) -= 0.5;
+  K_d(0, 2) += 0.5f; K_d(1, 2) += 0.5f;
+  K_d.topLeftCorner(2, 3) *= 0.5f;
+  K_d(0, 2) -= 0.5f; K_d(1, 2) -= 0.5f;
   return K_d;
 }
 
-
+/**
+ * Calculates the inverse of a 3x3 Matrix with the following 'shape'
+ *
+ *  | a   0   b |          | 1/a   0   -b/a |
+ *  | 0   c   d |    =>    | 0    1/c  -d/c |
+ *  | 0   0   1 |          | 0     0    1   |
+ *
+ * @param iKPy [description]
+ * @param KPy  [description]
+ * @param lvl  [description]
+ */
+Matrix3f invertKMat (const Eigen::Matrix3f K) {
+    Matrix3f K_inv = K;
+	K_inv <<   1.0f/K_inv(0,0)	, 0.0f				, -(K_inv(0,2)/K_inv(0,0)),
+			   0.0f				, 1.0f/K_inv(1,1)	, -(K_inv(1,2)/K_inv(1,1)),
+			   0.0f				, 0.0f				, 1.0f;
+   return K_inv;
+}
 
 
 //############################################################################
