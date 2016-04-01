@@ -747,16 +747,14 @@ void  imresize_CUDA( const float   *pImgSrc,
 
 __global__ void compute_image_derivatives_CUDA (const float *input, float *dX, float *dY, int w, int h)
 {
-    // TODO oskar: We have to clean this up.. for now it's pretty much copied straight from OldProject2 but I didn't like that we defined as size_t and then casted back to int
-    /*size_t*/int x = threadIdx.x + blockDim.x * blockIdx.x;
-    /*size_t*/int y = threadIdx.y + blockDim.y * blockIdx.y;
-    /*size_t*/int ind = x + y * w;
+    int x = threadIdx.x + blockDim.x * blockIdx.x;
+    int y = threadIdx.y + blockDim.y * blockIdx.y;
+    int ind = x + y * w;
 
     if (x<w && y<h) {
-        dX[ind] = (input[min(/*(int)*/(x+1), w-1) + w* /*(int)*/y]-input[max(/*(int)*/(x-1), 0) + w* /*(int)*/ y])*0.5f;
-        dY[ind] = (input[/*(int)*/x + w*min(/*(int)*/(y+1), h-1)]-input[/*(int)*/x + w*max(/*(int)*/(y-1), 0)])*0.5f;
+        dX[ind] = ( input[ min(x+1,w-1) + w*y  ] - input[ max(x-1, 0) + w*y ] )*0.5f;
+        dY[ind] = ( input[ x + w*min(y+1, h-1) ] - input[ x + w*max(y-1, 0) ] )*0.5f;
     }
-
 }
 
 

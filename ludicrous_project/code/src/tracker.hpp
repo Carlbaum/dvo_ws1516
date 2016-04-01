@@ -99,7 +99,9 @@ public:
     //   //DEPTH
     //   cudaMemcpy(prev, d_prev[l].depth, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
     //   convert_layered_to_mat(mTest, prev);
-    //   showImage( "Depth: " + std::to_string(l), mTest, 100, 100); //cv::waitKey(0); // TODO oskar: .. values are probably not in the correct range.. neither [0,1] nor [0,255].. result is just black n white.. should be gray scale
+    //   double min, max;
+    //   cv::minMaxLoc(mTest, &min, &max);
+    //   showImage( "Depth: " + std::to_string(l), mTest/max, 100, 100); //cv::waitKey(0); // TODO oskar: .. values are probably not in the correct range.. neither [0,1] nor [0,255].. result is just black n white.. should be gray scale
     //   //GRAY
     //   cudaMemcpy(prev, d_prev[l].gray, lw*lh*sizeof(float), cudaMemcpyDeviceToHost);
     //   convert_layered_to_mat(mTest, prev);
@@ -113,7 +115,7 @@ public:
     //   convert_layered_to_mat(mTest, prev);
     //   showImage( "DY: " + std::to_string(l), mTest, 300, 100); //cv::waitKey(0);
     //   //cvDestroyAllWindows();
-    // }
+    }
   }
 
   /**
