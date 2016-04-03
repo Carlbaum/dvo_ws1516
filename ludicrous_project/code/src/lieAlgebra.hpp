@@ -59,5 +59,4 @@ void convertTToSE3(Vector6f &xi, const Matrix3f &R, const Vector3f &t) {
     }
 
     xi.head(3) << w_hat(2,1) , w_hat(0,2) , w_hat(1,0);
-
 }
