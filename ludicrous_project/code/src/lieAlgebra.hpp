@@ -42,7 +42,7 @@ void convertTToSE3(Vector6f &xi, const Matrix3f &R, const Vector3f &t) {
     // norm_w is the Euclidean norm of w
     float norm_w  = acosf((R.trace() -1 ) * 0.5f );
     Matrix3f w_hat;
-    
+
     // do not divide by zero if norm_w=0
     if (norm_w > 0) {
         // log(R) = w_hat
@@ -58,6 +58,6 @@ void convertTToSE3(Vector6f &xi, const Matrix3f &R, const Vector3f &t) {
         xi.tail(3) = t;
     }
 
-    xi.head(3) << w_hat(1,2) , w_hat(2,0) , w_hat(0,1);
+    xi.head(3) << w_hat(2,1) , w_hat(0,2) , w_hat(1,0);
 
 }
