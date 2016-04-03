@@ -18,7 +18,8 @@ const int g_CUDA_blockSize2DX = 16;
 const int g_CUDA_blockSize2DY = 16;
 const int BORDER_ZERO = 1;
 const int BORDER_REPLICATE = 2;
-
+// tracker uses these global variables, so it has to be included after them
+// TODO: is this the proper way of using global variables inside the tracker class?
 #include "tracker.hpp"
 
 
@@ -36,6 +37,7 @@ int main(int argc, char *argv[]) {
     // ---------- PARAMETERS ----------
 
     // Path to data set
+    // this program will use all the images described in the txt files
     std::string path = "../data/freiburg1_xyz_first_10";
     getParam("path", path, argc, argv);
     std::cout << "Path to dataset: " << path << std::endl;
@@ -93,7 +95,7 @@ int main(int argc, char *argv[]) {
     */
 
     std::cout << "Hello world" << std::endl;
-    for (int i = 1; i < dataset.frames.size(); ++i) {
+    for (size_t i = 1; i < dataset.frames.size(); ++i) {
         Timer timer; timer.start();
 
         // Load in the images of the next frame

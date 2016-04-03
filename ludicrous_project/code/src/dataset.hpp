@@ -106,7 +106,7 @@ public:
     vector<GroundtruthRow> groundtruthRows = loadGroundtruthFile(path + "/groundtruth.txt");
     K = loadK(path + "/K.txt");
 
-    int k = 0, l = 0, m = 0; double tMaxLastPushed = -INFINITY;
+    size_t k = 0, l = 0, m = 0; double tMaxLastPushed = -INFINITY;
     while (true) {
       // Break if it reached the end of one
       if (k >= rgbRows.size()) { break; }
