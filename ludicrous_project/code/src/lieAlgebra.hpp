@@ -1,13 +1,16 @@
-#include <Eigen/Dense>
+#pragma once
 
+#include <Eigen/Dense>
+#include "eigen_typedef.h"
+
+using namespace Eigen;
 /**
- * [convertSE3ToT description]
- * @param xi [description]
- * @param R  [description]
- * @param t  [description]
+ * Convert xi twist coordinates to rotation matrix and translation vector
+ * @param xi twist coordinates array of the form (w1, w2, w3, v1, v2, v3)
+ * @param R  output rotation matrix
+ * @param t  output translation vector
  */
 void convertSE3ToT(const Vector6f &xi, Matrix3f &R, Vector3f &t) {
-    // xi is of the form (w1, w2, w3, v1, v2, v3)
     float norm_w = xi.head(3).norm();
     Matrix3f w_hat;
     w_hat <<     0, -xi(2),  xi(1),
@@ -33,10 +36,10 @@ void convertSE3ToT(const Vector6f &xi, Matrix3f &R, Vector3f &t) {
 }
 
 /**
- * [convertTToSE3 description]
- * @param xi [description]
- * @param R  [description]
- * @param t  [description]
+ * Convert rotation matrix and translation vector to xi twist coordinates
+ * @param xi output twist coordinates array of the form (w1, w2, w3, v1, v2, v3)
+ * @param R  rotation matrix
+ * @param t  translation vector
  */
 void convertTToSE3(Vector6f &xi, const Matrix3f &R, const Vector3f &t) {
     // norm_w is the Euclidean norm of w

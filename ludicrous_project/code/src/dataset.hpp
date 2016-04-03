@@ -1,8 +1,10 @@
-#include <sophus/se3.hpp>
+#include <Eigen/Dense>
+#include "eigen_typedef.h"
+#include "lieAlgebra.hpp"
 #include "tum_benchmark.hpp"
 
 using namespace std;
-using namespace Sophus;
+using namespace Eigen;
 
 struct Frame {
   double timestamp;
@@ -35,7 +37,7 @@ vector<GroundtruthRow> loadGroundtruthFile(string file) {
 
     Matrix3f rot = Quaternionf(a[6], a[3], a[4], a[5]).toRotationMatrix();
     Vector3f trans(a[0], a[1], a[2]);
-    row.xi = SE3f::log(SE3f(rot, trans));
+    convertTToSE3(row.xi, rot, trans);
 
     rows.push_back(row);
   }
