@@ -8,20 +8,19 @@ enum SolvingMethod { GAUSS_NEWTON, LEVENBERG_MARQUARDT, GRADIENT_DESCENT };
 enum ResidualWeight { NONE, HUBER, TDIST };
 
 class Tracker {
-private:
-struct PyramidLevel { float *gray, *depth, *gray_dx, *gray_dy; };
 
 public:
+
 /**
  * Tracker constructor
- * @param grayFirstFrame  gray image array of floats (not uchar)
- * @param depthFirstFrame depth image array of floats
- * @param K               Eigen 3x3 matrix with camera projection parameters
- * @param solvingMethod   Method for solving the linear system for delta ksi
- * @param weightType      Weight shape for the residuals // TODO? guillermo: not sure how far this is implemented
- * @param minLevel        Lowest level in the pyramid to be used for alignment. Default is 0 (full resolution).
- * @param maxLevel        Highest level number of the pyramid above the full resolution image
- * @param iterationsCount Maximum number of iterations per pyramid level
+ * @param grayFirstFrame        gray image array of floats (not uchar)
+ * @param depthFirstFrame       depth image array of floats
+ * @param K                     Eigen 3x3 matrix with camera projection parameters
+ * @param solvingMethod         Method for solving the linear system for delta ksi
+ * @param weightType            Weight shape for the residuals // TODO? guillermo: not sure how far this is implemented
+ * @param minLevel              Lowest level index in the pyramid to be used for alignment. Default is 0 (full resolution).
+ * @param maxLevel              Highest level index of the pyramid above the full resolution image
+ * @param maxIterationsPerLevel Maximum number of iterations per pyramid level
  */
 Tracker(
         float* grayFirstFrame,
@@ -31,7 +30,7 @@ Tracker(
         Eigen::Matrix3f K,
         int minLevel = 0,
         int maxLevel = 4,
-        int iterationsCount = 20,
+        int maxIterationsPerLevel = 20,
         SolvingMethod solvingMethod = GAUSS_NEWTON,
         ResidualWeight weightType = NONE
                                     // bool useCUBLAS = true,
@@ -41,12 +40,12 @@ Tracker(
         solvingMethod(solvingMethod),
         minLevel(minLevel),
         maxLevel(maxLevel),
-        iterationsCount(iterationsCount),
+        maxIterationsPerLevel(maxIterationsPerLevel),
         weightType(weightType),
         totalComputationTime(0),
         frameComputationTime(0),
         stepCount(0),
-        lastFrameXi(Vector6f::Zero()),
+        xi_prev(Vector6f::Zero()),
         xi(Vector6f::Zero())
         // useCUBLAS(useCUBLAS)
 {
@@ -86,36 +85,72 @@ Tracker(
 Vector6f align(float *grayCur, float *depthCur) {
         fill_pyramid(d_cur, grayCur, depthCur);
 
-        // Set the previous Xi as initial guess
-        frameXi = lastFrameXi;
+        // Use the previous xi as initial guess. It is stored in a private variable
+        // other option:
+        // xi = Vector6f::Zero();
 
-        // Calculate Rotation matrix and translation vector
-        convertSE3ToT(frameXi, R, t);
-        // convertTToSE3(frameXi, R, t);
-        // std::cout << frameXi << std::endl;
+        // from the highest level to the minimum level set
+        for (int level = maxLevel; level >= minLevel; level--) {
+                // set d_prev_err to big number      TODO: directly in GPU?
+
+                // for a maximum number of iterations per level
+                for (int i = 0; i < maxIterationsPerLevel; i++) {
+                        // std::cout << level << ", " << i << std::endl;
+
+                        // Calculate Rotation matrix and translation vector: CPU operation
+                        convertSE3ToT(xi, R, t);
+
+                        // transform_point: CUDA operation
+                                // get 3D point: p=(u*d, v*d, d) // u, v are the camera coordinates
+                                // unproyect from camera: p = K_inv * p     // TODO: actually precalculate R*K_inv, then copy to GPU
+                                // transform: p = R * p + t
+                                // proyect to camera: p = K * p
+                                // get 2D camera coordinates: u = x/z; v = y/z
+                                // store (u,v)_curr position for each (u,v)_prev
+
+                        // parallel CUDA kernels:
+                                // calculate_jacobian J(n,6)  // calculate_residuals r_xi(n,1) and error (mean squares of r_xi)
+                                                              // calculate_weights W(n,1)
+
+                        // parallel CUDA kernels:
+                                // calculate A(6,6) = J.T * W * J   // calculate B(6,1) = -J.T * W * r
+                                // TODO: best order to calculate the previous multiplications. J.T * W first? (used by both) or all together avoiding reads?
+
+                        // solve linear system: A * delta_xi = b; with solver of Eigen library: CPU operation.      TODO: Faster to solve directly in GPU?
+
+                        // if change in error is small      TODO: Compare directly in GPU?
+                                // stop iterating in this level
+
+                        // save error value for next iteration: d_prev_err = d_err:     TODO: use cudaMemcpy?
+                }
+        }
+
+
+        // convertTToSE3(xi, R, t);
+        // std::cout << xi << std::endl;
 
         // swap the pointers so we place image in the correct buffer next time this function is called
         temp_swap = d_cur; d_cur = d_prev; d_prev = temp_swap;
-        return frameXi;
-
-        //++stepCount;
+        // accumulate total_xi: total_xi = log(exp(xi)*exp(total_xi))
+        return xi;
 }
 
-double averageTime() {
-        return totalComputationTime / stepCount;
-}
-
-double totalComputationTime;
-double frameComputationTime;
-int stepCount;
-Vector6f xi;
+// double averageTime() {
+//         return totalComputationTime / stepCount;
+// }
+//
+// double totalComputationTime;
+// double frameComputationTime;
+// int stepCount;
+Vector6f xi_total;
 
 
 
 private:
+struct PyramidLevel { float *gray, *depth, *gray_dx, *gray_dy; };
 // host parameters
 SolvingMethod solvingMethod;   // enum type of possible solving methods
-int iterationsCount;
+int maxIterationsPerLevel;
 int maxLevel;
 int minLevel;   // For speed. Used if the highest precision is not required
 int w;   // width of the first frame (and all frames)
@@ -130,13 +165,13 @@ float *d_J;   // device Jacobian array for ALL residuals
 float *d_r;   // device residuals array
 float *d_b;   // device linear system inhomogeneous term array
 float *d_A;   // device linear system matrix array
-float *d_visualResidual;   // device image residuals array
-float *d_error;   // device single float value
-int *d_n;   // TODO device single integer value
+// float *d_visualResidual;   // device image residuals array      TODO: needed? just for debugging?
+float *d_error;   // mean squares error of residual
+float *d_error_prev;   // mean squares error of residual in previous iteration
 std::vector<PyramidLevel> d_cur;   // current vector of pointers to device pyramid level structures
 std::vector<PyramidLevel> d_prev;   // previous vector of pointers to device pyramid level structures
 std::vector<PyramidLevel> temp_swap;
-float *d_tdistWeightedSqSum;   // Studendt-T weights for each residual. Has the size of the image. // TODO: shouldn't this be a pyramid? Or is it just allocated in excess for higher levels?
+// float *d_tdistWeightedSqSum;   // Studendt-T weights for each residual. Has the size of the image. // TODO: shouldn't this be a pyramid? Or is it just allocated in excess for higher levels?
 Matrix3f R;
 Vector3f t;
 
@@ -145,10 +180,10 @@ std::vector<Matrix3f> K_pyr;   // stores projection matrix and downsampled versi
 std::vector<Matrix3f> K_pyr_inv;   // inverse K_pyr
 //std::vector<Matrix3f> d_K_pyr;
 //std::vector<Matrix3f> d_K_pyr_inv;
-Vector6f lastFrameXi;   // TODO: keeps last(?) frame for some reason
-Vector6f frameXi;
+Vector6f xi_prev;   // TODO: keeps last(?) frame for some reason
+Vector6f xi;
 
-//_________________PRIVATE FUNCTIONS
+//_________________PRIVATE FUNCTIONS____________________________________________
 void fill_K_levels(Eigen::Matrix3f K) {
         K_pyr[0] = K;
         K_pyr_inv[0] = invertKMat(K_pyr[0]);
