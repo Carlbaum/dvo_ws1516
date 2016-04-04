@@ -118,9 +118,10 @@ Vector6f align(float *grayCur, float *depthCur) {
                         transform_points(level, level_width, level_height);
 
                         // parallel CUDA kernels: two streams
-                                // calculate_jacobian J(n,6)  // calculate_residuals r_xi(n,1) and error (mean squares of r_xi) TODO: map second image to texture
-                                                              // calculate_weights width(n,1)
+                                // calculate_jacobian J(n,6)  // calculate_residuals r_xi(n,1) and error (mean squares of r_xi)
+                                                              // calculate_weights W(n,1)
                         calculate_jacobian(level, level_width, level_height);
+                        calculate_residuals(level, level_width, level_height);
 
                         // parallel CUDA kernels: two streams
                                 // calculate A(6,6) = J.T * W * J   // calculate B(6,1) = -J.T * W * r
@@ -281,9 +282,6 @@ void define_texture_parameters() {
         texRef_grayImg.normalized = false;
         texRef_grayImg.filterMode = cudaFilterModeLinear;
 
-        texRef_depthImg.normalized = false;
-        texRef_depthImg.filterMode = cudaFilterModeLinear;
-
         texRef_gray_dx.normalized = false;
         texRef_gray_dx.filterMode = cudaFilterModeLinear;
 
@@ -295,14 +293,12 @@ void bind_textures(int level, int level_width, int level_height) {
         cudaChannelFormatDesc desc = cudaCreateChannelDesc<float>(); // number of bits for each texture
         int pitch = width*sizeof(float);
         cudaBindTexture2D(NULL, &texRef_grayImg, d_cur[level].gray, &desc, level_width, level_height, pitch);
-        cudaBindTexture2D(NULL, &texRef_depthImg, d_cur[level].depth, &desc, level_width, level_height, pitch);
         cudaBindTexture2D(NULL, &texRef_gray_dx, d_cur[level].gray_dx, &desc, level_width, level_height, pitch);
         cudaBindTexture2D(NULL, &texRef_gray_dy, d_cur[level].gray_dy, &desc, level_width, level_height, pitch);
 }
 
 void unbind_textures() {
         cudaUnbindTexture(texRef_grayImg);
-        cudaUnbindTexture(texRef_depthImg);
         cudaUnbindTexture(texRef_gray_dx);
         cudaUnbindTexture(texRef_gray_dy);
 }
@@ -325,7 +321,7 @@ void transform_points(int level, int level_width, int level_height) {
 }
 
 /**
- * Calculates the jacobian at each point
+ * Calculates the jacobian at each pixel
  */
 void calculate_jacobian(int level, int level_width, int level_height) {
           // Block = 2D array of threads
@@ -337,6 +333,25 @@ void calculate_jacobian(int level, int level_width, int level_height) {
           int   gridSizeX = (width  + dimBlock.x-1) / dimBlock.x;
           int   gridSizeY = (height + dimBlock.y-1) / dimBlock.y;
           dim3  dimGrid( gridSizeX, gridSizeY, 1 );
+
+          d_calculate_jacobian <<< dimGrid, dimBlock >>> (d_J, d_x_prime, d_y_prime, d_z_prime, d_u_warped, d_v_warped, level_width, level_height, level); // texture is accessed directly. No argument needed
+}
+
+/**
+ * Calculates the residual at each pixel
+ */
+void calculate_residuals(int level, int level_width, int level_height) {
+          // Block = 2D array of threads
+          dim3  dimBlock( g_CUDA_blockSize2DX, g_CUDA_blockSize2DY, 1 );
+
+          // Grid = 2D array of blocks
+          // gridSizeX = ceil( width / nBlocksX )
+          // gridSizeY = ceil( height / nBlocksX )
+          int   gridSizeX = (width  + dimBlock.x-1) / dimBlock.x;
+          int   gridSizeY = (height + dimBlock.y-1) / dimBlock.y;
+          dim3  dimGrid( gridSizeX, gridSizeY, 1 );
+
+          d_calculate_residuals <<< dimGrid, dimBlock >>> (d_r, d_prev[level].gray, d_u_warped, d_v_warped, level_width, level_height, level); // texture is accessed directly. No argument needed
 }
 
 void allocateGPUMemory() {
