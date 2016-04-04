@@ -13,6 +13,13 @@ __global__ void d_transform_points( float *x_prime, float *y_prime, const float 
         if ( (x >= width) || (y >= height) )
                 return;
 
+        // if the depth value is not valid
+        if ( (depthImg[pos] == 0) ) {
+                x_prime[pos] = -1; // mark as not valid
+                y_prime[pos] = -1; // mark as not valid
+                return;
+        }
+
         // get 3D point: p=(u*d, v*d, d) // u, v are the camera coordinates
         float p[3] = { x * depthImg[pos],
                        y * depthImg[pos],
@@ -38,6 +45,15 @@ __global__ void d_transform_points( float *x_prime, float *y_prime, const float 
         // store (x',y') position for each (x,y)
         x_prime[pos] = p[0] / p[2];
         y_prime[pos] = p[1] / p[2];
+
+        // if (x', y') is out of bounds in the second frame (not interpolable)
+        if (    (x_prime[pos] < 0)
+             || (x_prime[pos] > width-1)
+             || (y_prime[pos] < 0)
+             || (y_prime[pos] > height-1) ) {
+                x_prime[pos] = -1; // mark as not valid
+                y_prime[pos] = -1; // mark as not valid
+        }
 
         // const_K_pyr DEBUG
         // if (x == 0 && y == 0 && level == 0) {

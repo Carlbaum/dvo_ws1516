@@ -685,7 +685,7 @@ void  imresize_CUDA( const float   *pImgSrc,
   bool    fUsePixCenter = true;
 
 
-  // Image Downscaling? => Apply Gaussian blur beforehand. Only if it is NOT a DEPTH image
+  // Image Downscaling? => Apply Gaussian blur beforehand. Only if it is NOT a DEPTH image. Takes about an extra milisecond per frame
   if ( ( dst_width  < src_width ) && ( dst_height < src_height ) && (!isDepthImage) )
   {
     float   *I_gauss = NULL;
