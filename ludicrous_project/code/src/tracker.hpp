@@ -310,6 +310,8 @@ void allocateGPUMemory() {
         cudaMalloc(&d_x_prime, width*height*sizeof(float)); CUDA_CHECK;
         cudaMalloc(&d_y_prime, width*height*sizeof(float)); CUDA_CHECK;
         cudaMalloc(&d_z_prime, width*height*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_u_warped, width*height*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_v_warped, width*height*sizeof(float)); CUDA_CHECK;
         cudaMalloc(&d_b, 6*sizeof(float)); CUDA_CHECK;
         cudaMalloc(&d_A, 6*6*sizeof(float)); CUDA_CHECK;
         cudaMalloc(&d_error, sizeof(float)); CUDA_CHECK;
@@ -342,6 +344,8 @@ void deallocateGPUMemory() {
         cudaFree(d_x_prime); CUDA_CHECK;
         cudaFree(d_y_prime); CUDA_CHECK;
         cudaFree(d_z_prime); CUDA_CHECK;
+        cudaFree(d_u_warped); CUDA_CHECK;
+        cudaFree(d_v_warped); CUDA_CHECK;
         cudaFree(d_b); CUDA_CHECK;
         cudaFree(d_A); CUDA_CHECK;
         cudaFree(d_error); CUDA_CHECK;
