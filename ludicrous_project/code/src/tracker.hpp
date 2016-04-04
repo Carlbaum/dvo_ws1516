@@ -114,12 +114,12 @@ Vector6f align(float *grayCur, float *depthCur) {
                         // transform_points: CUDA operation
                         transform_points(level, level_width, level_height);
 
-                        // parallel CUDA kernels:
+                        // parallel CUDA kernels: two streams
                                 // calculate_jacobian J(n,6)  // calculate_residuals r_xi(n,1) and error (mean squares of r_xi) TODO: map second image to texture
                                                               // calculate_weights width(n,1)
                         // calculate_jacobian(level, level_width, level_height);
 
-                        // parallel CUDA kernels:
+                        // parallel CUDA kernels: two streams
                                 // calculate A(6,6) = J.T * W * J   // calculate B(6,1) = -J.T * W * r
                                 // TODO: best order to calculate the previous multiplications. J.T * width first? (used by both) or all together avoiding reads?
 
@@ -231,7 +231,7 @@ void fill_pyramid(std::vector<PyramidLevel>& d_img, float *grayImg, float *depth
                 level_width = width / (1 << level); // bitwise operator to divide by 2**level
                 level_height = height / (1 << level);
                 imresize_CUDA(d_img[level-1].gray, d_img[level].gray, 2*level_width, 2*level_height, level_width, level_height, 1, false);
-                imresize_CUDA(d_img[level-1].depth, d_img[level].depth, 2*level_width, 2*level_height, level_width, level_height, 1, false);
+                imresize_CUDA(d_img[level-1].depth, d_img[level].depth, 2*level_width, 2*level_height, level_width, level_height, 1, true); // TODO: Check properly if isDepthImage is working. Looks like it does
         }
 
         for (int level = 0; level <= maxLevel; level++) {

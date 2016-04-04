@@ -472,8 +472,7 @@ void  gaussFilter2D_CUDA( const float   *img_src,
                           int           channels,
                           float         sigma,
                           int           radius,
-                          int           borderMethod ,
-                          bool          ignoreZeros)
+                          int           borderMethod )
 {
   // Reserve shared memory for the block + "radius" padding pixels at each border
   // Last term is some extra buffer (function parameters, template arguments, ..)
@@ -514,33 +513,15 @@ void  gaussFilter2D_CUDA( const float   *img_src,
   {
     int   offset = width * height * ch;
 
-    // If ignoreZeros is true, zero values of the image will not contribute in the gaussian filter
-    if(!ignoreZeros)
-    {
-        gaussFilter2D_horizontal_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize >>>(
-                                 &img_src[offset], d_tmp,
-                                 width, height, sigma, radius, borderMethod );
-        cudaDeviceSynchronize();
+    gaussFilter2D_horizontal_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize >>>(
+                             &img_src[offset], d_tmp,
+                             width, height, sigma, radius, borderMethod );
+    cudaDeviceSynchronize();
 
-        gaussFilter2D_vertical_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize >>>(
-                                 d_tmp, &img_dst[offset],
-                                 width, height, sigma, radius, borderMethod );
-        cudaDeviceSynchronize();
-    }
-    else
-    {
-        gaussFilter2D_horizontal_CUDA_kernel_nonzero<<< dimGrid, dimBlock, sharedMemSize >>>(
-                                 &img_src[offset], d_tmp,
-                                 width, height, sigma, radius, borderMethod );
-        cudaDeviceSynchronize();
-
-        gaussFilter2D_vertical_CUDA_kernel_nonzero<<< dimGrid, dimBlock, sharedMemSize >>>(
-                              d_tmp, &img_dst[offset],
-                              width, height, sigma, radius, borderMethod );
-        cudaDeviceSynchronize();
-
-
-    }
+    gaussFilter2D_vertical_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize >>>(
+                             d_tmp, &img_dst[offset],
+                             width, height, sigma, radius, borderMethod );
+    cudaDeviceSynchronize();
   }
   // CHECK_FOR_CUDA_ERRORS( "gaussFilter2D_CUDA" );
 
@@ -577,8 +558,10 @@ __global__ void  scaleImage_CUDA_kernel( const T      *pImgSrc,
                                          int          dst_width,
                                          int          dst_height,
                                          int          nChannels,
-                                         bool         fUsePixelCenter=false )
+                                         bool         fUsePixelCenter=false,
+                                         bool         isDepthImage=false )
 {
+  //TODO: use texture?
 
   // Get the 2D-coordinate of the pixel of the current thread
   const int   x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -641,9 +624,13 @@ __global__ void  scaleImage_CUDA_kernel( const T      *pImgSrc,
 
       float   du_inv = 1.0f - du;
 
-      pImgDst[ ch*dst_width*dst_height + iPosDst ] =
-                           ( (1.0f - dv) * ( p1 * du_inv + p2 * du ) +
-                                     dv  * ( p3 * du_inv + p4 * du ) );
+      float validPixels = 4.0f;
+      if (isDepthImage) {
+          validPixels = (p1 > 0) + (p2 > 0) + (p3 > 0) + (p4 > 0);
+      }
+      pImgDst[ ch*dst_width*dst_height + iPosDst ] = validPixels / 4.0f
+                                                     * ( (1.0f - dv) * ( p1 * du_inv + p2 * du ) +
+                                                                 dv  * ( p3 * du_inv + p4 * du ) );
     }//for all channels
   }//bilinear interpolation
 
@@ -661,7 +648,7 @@ void  imresize_CUDA( const float   *pImgSrc,
                      int           dst_width,
                      int           dst_height,
                      int           channels ,
-                     bool          ignoreZeros)
+                     bool          isDepthImage)
 {
   //DEBUG
   //printf( "imgSrc: %dx%dx%d -> imgDst: %dx%dx%d\n",
@@ -698,8 +685,8 @@ void  imresize_CUDA( const float   *pImgSrc,
   bool    fUsePixCenter = true;
 
 
-  // Image Downscaling? => Apply Gaussian blur beforehand
-  if ( ( dst_width  < src_width ) && ( dst_height < src_height ) )
+  // Image Downscaling? => Apply Gaussian blur beforehand. Only if it is NOT a DEPTH image
+  if ( ( dst_width  < src_width ) && ( dst_height < src_height ) && (!isDepthImage) )
   {
     float   *I_gauss = NULL;
     cudaMalloc( (void**) &I_gauss,
@@ -733,7 +720,7 @@ void  imresize_CUDA( const float   *pImgSrc,
 
     // Run Gauss filtering
     gaussFilter2D_CUDA( pImgSrc, I_gauss, src_width, src_height, channels,
-                        sigma, radius, BORDER_REPLICATE , ignoreZeros);
+                        sigma, radius, BORDER_REPLICATE );
     cudaDeviceSynchronize();
 
 
@@ -758,7 +745,7 @@ void  imresize_CUDA( const float   *pImgSrc,
                                  pImgSrc, pImgDst,
                                  src_width, src_height,
                                  dst_width, dst_height,
-                                 channels, fUsePixCenter );
+                                 channels, fUsePixCenter , isDepthImage );
   }//if no Gauss filter
 
   cudaDeviceSynchronize();
