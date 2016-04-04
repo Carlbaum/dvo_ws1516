@@ -21,6 +21,7 @@ using namespace std;
     const int g_CUDA_blockSize2DY = 16;
     const int BORDER_ZERO = 1;
     const int BORDER_REPLICATE = 2;
+    cudaStream_t stream1, stream2;
     // tracker uses these global variables, so it has to be included after them
     __constant__ float const_K_pyr[9*MAX_LEVELS]; // Allocates constant memory in excess for K and K downscaled. Stored column-wise and matrix after matrix
     __constant__ float const_RK_inv[9]; // Allocates space for the concatenation of a rotation and an intrinsic matrix. Stored column-wise
@@ -38,6 +39,10 @@ int main(int argc, char *argv[]) {
     cudaGetDevice(&devID); CUDA_CHECK;
     cudaGetDeviceProperties(&props, devID); CUDA_CHECK;
     g_CUDA_maxSharedMemSize = props.sharedMemPerBlock;
+
+    // Create streams
+    cudaStreamCreate ( &stream1 );
+    cudaStreamCreate ( &stream2 );
 
 
 

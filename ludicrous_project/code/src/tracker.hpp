@@ -120,8 +120,9 @@ Vector6f align(float *grayCur, float *depthCur) {
                         // parallel CUDA kernels: two streams
                                 // calculate_jacobian J(n,6)  // calculate_residuals r_xi(n,1) and error (mean squares of r_xi)
                                                               // calculate_weights W(n,1)
-                        calculate_jacobian(level, level_width, level_height);
-                        calculate_residuals(level, level_width, level_height);
+                        calculate_jacobian(level, level_width, level_height, stream1);
+                        calculate_residuals(level, level_width, level_height, stream2);
+                        cudaDeviceSynchronize();
 
                         // parallel CUDA kernels: two streams
                                 // calculate A(6,6) = J.T * W * J   // calculate B(6,1) = -J.T * W * r
@@ -323,7 +324,7 @@ void transform_points(int level, int level_width, int level_height) {
 /**
  * Calculates the jacobian at each pixel
  */
-void calculate_jacobian(int level, int level_width, int level_height) {
+void calculate_jacobian(int level, int level_width, int level_height, cudaStream_t stream) {
           // Block = 2D array of threads
           dim3  dimBlock( g_CUDA_blockSize2DX, g_CUDA_blockSize2DY, 1 );
 
@@ -334,13 +335,13 @@ void calculate_jacobian(int level, int level_width, int level_height) {
           int   gridSizeY = (height + dimBlock.y-1) / dimBlock.y;
           dim3  dimGrid( gridSizeX, gridSizeY, 1 );
 
-          d_calculate_jacobian <<< dimGrid, dimBlock >>> (d_J, d_x_prime, d_y_prime, d_z_prime, d_u_warped, d_v_warped, level_width, level_height, level); // texture is accessed directly. No argument needed
+          d_calculate_jacobian <<< dimGrid, dimBlock, 0, stream >>> (d_J, d_x_prime, d_y_prime, d_z_prime, d_u_warped, d_v_warped, level_width, level_height, level); // texture is accessed directly. No argument needed
 }
 
 /**
  * Calculates the residual at each pixel
  */
-void calculate_residuals(int level, int level_width, int level_height) {
+void calculate_residuals(int level, int level_width, int level_height, cudaStream_t stream) {
           // Block = 2D array of threads
           dim3  dimBlock( g_CUDA_blockSize2DX, g_CUDA_blockSize2DY, 1 );
 
@@ -351,7 +352,7 @@ void calculate_residuals(int level, int level_width, int level_height) {
           int   gridSizeY = (height + dimBlock.y-1) / dimBlock.y;
           dim3  dimGrid( gridSizeX, gridSizeY, 1 );
 
-          d_calculate_residuals <<< dimGrid, dimBlock >>> (d_r, d_prev[level].gray, d_u_warped, d_v_warped, level_width, level_height, level); // texture is accessed directly. No argument needed
+          d_calculate_residuals <<< dimGrid, dimBlock, 0, stream >>> (d_r, d_prev[level].gray, d_u_warped, d_v_warped, level_width, level_height, level); // texture is accessed directly. No argument needed
 }
 
 void allocateGPUMemory() {
