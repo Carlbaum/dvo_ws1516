@@ -25,6 +25,10 @@ using namespace std;
     __constant__ float const_K_pyr[9*MAX_LEVELS]; // Allocates constant memory in excess for K and K downscaled. Stored column-wise and matrix after matrix
     __constant__ float const_RK_inv[9]; // Allocates space for the concatenation of a rotation and an intrinsic matrix. Stored column-wise
     __constant__ float const_translation[3]; // Allocates space for a translation vector
+    texture <float, 2, cudaReadModeElementType> texRef_grayImg;
+    texture <float, 2, cudaReadModeElementType> texRef_depthImg;
+    texture <float, 2, cudaReadModeElementType> texRef_gray_dx;
+    texture <float, 2, cudaReadModeElementType> texRef_gray_dy;
 #include "tracker.hpp"
 
 int main(int argc, char *argv[]) {

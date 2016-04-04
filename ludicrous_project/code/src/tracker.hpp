@@ -69,6 +69,8 @@ Tracker(
 
         // Fill image pyramid of the first frame. Already as previous frame since align fills the current frame d_cur and only swaps at the end.
         fill_pyramid(d_prev, grayFirstFrame, depthFirstFrame);
+
+        define_texture_parameters();
 }
 
 /**
@@ -89,15 +91,16 @@ Vector6f align(float *grayCur, float *depthCur) {
         fill_pyramid(d_cur, grayCur, depthCur);
 
         // Use the previous xi as initial guess. It is stored in a private variable
-        // other option:
+        // other option, initialize as 0:
         // xi = Vector6f::Zero();
-
 
         // from the highest level to the minimum level set
         for (int level = maxLevel; level >= minLevel; level--) {
                 int level_width = width / (1 << level); // calculating bitwise the succesive powers of 2
                 int level_height = height / (1 << level);
                 // set d_prev_err to big float number      TODO: directly in GPU?
+
+                bind_textures(level, level_width, level_height); // used for interpolation in the current image
 
                 // for a maximum number of iterations per level
                 for (int i = 0; i < maxIterationsPerLevel; i++) {
@@ -130,6 +133,8 @@ Vector6f align(float *grayCur, float *depthCur) {
 
                         // save error value for next iteration: d_prev_err = d_err:     TODO: use cudaMemcpy?
                 }
+
+                unbind_textures();  // leave texture references free for binding at level below
         }
 
 
@@ -270,6 +275,36 @@ void fill_pyramid(std::vector<PyramidLevel>& d_img, float *grayImg, float *depth
         //         //cvDestroyAllWindows();
         // }
 
+}
+
+void define_texture_parameters() {
+        texRef_grayImg.normalized = false;
+        texRef_grayImg.filterMode = cudaFilterModeLinear;
+
+        texRef_depthImg.normalized = false;
+        texRef_depthImg.filterMode = cudaFilterModeLinear;
+
+        texRef_gray_dx.normalized = false;
+        texRef_gray_dx.filterMode = cudaFilterModeLinear;
+
+        texRef_gray_dy.normalized = false;
+        texRef_gray_dy.filterMode = cudaFilterModeLinear;
+}
+
+void bind_textures(int level, int level_width, int level_height) {
+        cudaChannelFormatDesc desc = cudaCreateChannelDesc<float>(); // number of bits for each texture
+        int pitch = width*sizeof(float);
+        cudaBindTexture2D(NULL, &texRef_grayImg, d_cur[level].gray, &desc, level_width, level_height, pitch);
+        cudaBindTexture2D(NULL, &texRef_depthImg, d_cur[level].depth, &desc, level_width, level_height, pitch);
+        cudaBindTexture2D(NULL, &texRef_gray_dx, d_cur[level].gray_dx, &desc, level_width, level_height, pitch);
+        cudaBindTexture2D(NULL, &texRef_gray_dy, d_cur[level].gray_dy, &desc, level_width, level_height, pitch);
+}
+
+void unbind_textures() {
+        cudaUnbindTexture(texRef_grayImg);
+        cudaUnbindTexture(texRef_depthImg);
+        cudaUnbindTexture(texRef_gray_dx);
+        cudaUnbindTexture(texRef_gray_dy);
 }
 
 /**
