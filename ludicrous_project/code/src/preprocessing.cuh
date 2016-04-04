@@ -628,7 +628,7 @@ __global__ void  scaleImage_CUDA_kernel( const T      *pImgSrc,
       if (isDepthImage) {
           validPixels = (p1 > 0) + (p2 > 0) + (p3 > 0) + (p4 > 0);
       }
-      pImgDst[ ch*dst_width*dst_height + iPosDst ] = validPixels / 4.0f
+      pImgDst[ ch*dst_width*dst_height + iPosDst ] = 4.0f / validPixels
                                                      * ( (1.0f - dv) * ( p1 * du_inv + p2 * du ) +
                                                                  dv  * ( p3 * du_inv + p4 * du ) );
     }//for all channels
