@@ -1,6 +1,7 @@
 #pragma once
 #include <Eigen/Dense>
 #include "Exception.h"
+#include <cuda_runtime.h>
 
 
 Matrix3f downsampleK(const Matrix3f K) {

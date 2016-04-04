@@ -10,18 +10,22 @@
 
 using namespace std;
 
-// global variables
-int             devID;
-cudaDeviceProp  props;
-int g_CUDA_maxSharedMemSize;
-const int g_CUDA_blockSize2DX = 16;
-const int g_CUDA_blockSize2DY = 16;
-const int BORDER_ZERO = 1;
-const int BORDER_REPLICATE = 2;
-// tracker uses these global variables, so it has to be included after them
 // TODO: is this the proper way of using global variables inside the tracker class?
+    // global variables
+    const int MAX_LEVELS = 10;
+        // CUDA related
+    int             devID;
+    cudaDeviceProp  props;
+    int g_CUDA_maxSharedMemSize;
+    const int g_CUDA_blockSize2DX = 16;
+    const int g_CUDA_blockSize2DY = 16;
+    const int BORDER_ZERO = 1;
+    const int BORDER_REPLICATE = 2;
+    // tracker uses these global variables, so it has to be included after them
+    __constant__ float const_K_pyr[9*MAX_LEVELS]; // Allocates constant memory in excess for K and K downscaled
+    __constant__ float const_RK_inv[9]; // Allocates space for the concatenation of a rotation and an intrinsic matrix
+    __constant__ float const_translation[3]; // Allocates space for a translation vector
 #include "tracker.hpp"
-
 
 int main(int argc, char *argv[]) {
 
@@ -46,7 +50,7 @@ int main(int argc, char *argv[]) {
     int numberOfLevels = 5;
     getParam("numberOfLevels", numberOfLevels, argc, argv);
     numberOfLevels = std::max(1, numberOfLevels);
-    numberOfLevels = std::min(10, numberOfLevels); // 1/512 size reduction is in some cases already too large
+    numberOfLevels = std::min(MAX_LEVELS, numberOfLevels); // 1/512 size reduction is in some cases already too large
     std::cout << "number of levels in pyramids: " << numberOfLevels << std::endl;
 
     /* FROM THE EXERCISES, DON'T THINK WE NEED THIS
@@ -84,7 +88,7 @@ int main(int argc, char *argv[]) {
     convert_mat_to_layered(imgDepth, mDepth);
 
     // initialize the tracker
-    Tracker tracker(imgGray, imgDepth, w, h, K, maxLevel=numberOfLevels-1);
+    Tracker tracker(imgGray, imgDepth, w, h, K, 0, numberOfLevels-1);
 
     // TODO: WE NEED TO INITIALIZE THE IMAGES BEFORE THE MAIN LOOP
 
