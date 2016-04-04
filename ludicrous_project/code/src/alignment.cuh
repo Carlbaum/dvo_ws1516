@@ -3,7 +3,15 @@
 // #include <Eigen/Dense>  //TODO: viable to use Eigen in CUDA?
 
 
-__global__ void d_transform_points( float *x_prime, float *y_prime, const float *depthImg, int width, int height, int level ) {
+__global__ void d_transform_points( float *x_prime,
+                                    float *y_prime,
+                                    float *z_prime,
+                                    float *u_warped,
+                                    float *v_warped,
+                                    const float *depthImg,
+                                    int width,
+                                    int height,
+                                    int level ) {
         // Get the 2D-coordinate of the pixel of the current thread
         const int   x = blockIdx.x * blockDim.x + threadIdx.x;
         const int   y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -15,8 +23,8 @@ __global__ void d_transform_points( float *x_prime, float *y_prime, const float 
 
         // if the depth value is not valid
         if ( (depthImg[pos] == 0) ) {
-                x_prime[pos] = -1; // mark as not valid
-                y_prime[pos] = -1; // mark as not valid
+                u_warped[pos] = -1; // mark as not valid
+                v_warped[pos] = -1; // mark as not valid
                 return;
         }
 
@@ -27,6 +35,7 @@ __global__ void d_transform_points( float *x_prime, float *y_prime, const float 
 
         // unproyect and transform: aux = RK_inv * p + t      // unproyect from camera: p = K_inv * p
                                                               // transform: p = R * p + t
+        // matrices in constant memory are stored column-wise
         float aux[3];  // auxiliar variable
         for (int i = 0; i < 3; i++) {
                 aux[i] = const_translation[i]
@@ -34,25 +43,27 @@ __global__ void d_transform_points( float *x_prime, float *y_prime, const float 
                          + p[1] * const_RK_inv[3 + i]
                          + p[2] * const_RK_inv[6 + i];
         }
+        x_prime[pos] = aux[0];  y_prime[pos] = aux[1];  z_prime[pos] = aux[2];
+
         // proyect to camera: p = K * aux
         for (int i = 0; i < 3; i++) {
-                p[i] = aux[0] * const_K_pyr[0 + i + 9*level]
+                p[i] =   aux[0] * const_K_pyr[0 + i + 9*level]
                        + aux[1] * const_K_pyr[3 + i + 9*level]
                        + aux[2] * const_K_pyr[6 + i + 9*level];
         }
 
         // get 2D camera coordinates in second frame: u2 = x/z; v2 = y/z
         // store (x',y') position for each (x,y)
-        x_prime[pos] = p[0] / p[2];
-        y_prime[pos] = p[1] / p[2];
+        u_warped[pos] = p[0] / p[2];
+        u_warped[pos] = p[1] / p[2];
 
         // if (x', y') is out of bounds in the second frame (not interpolable)
-        if (    (x_prime[pos] < 0)
-             || (x_prime[pos] > width-1)
-             || (y_prime[pos] < 0)
-             || (y_prime[pos] > height-1) ) {
-                x_prime[pos] = -1; // mark as not valid
-                y_prime[pos] = -1; // mark as not valid
+        if (    (u_warped[pos] < 0)
+             || (u_warped[pos] > width-1)
+             || (v_warped[pos] < 0)
+             || (v_warped[pos] > height-1) ) {
+                u_warped[pos] = -1; // mark as not valid
+                v_warped[pos] = -1; // mark as not valid
         }
 
         // const_K_pyr DEBUG

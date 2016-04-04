@@ -117,7 +117,7 @@ Vector6f align(float *grayCur, float *depthCur) {
                         // parallel CUDA kernels: two streams
                                 // calculate_jacobian J(n,6)  // calculate_residuals r_xi(n,1) and error (mean squares of r_xi) TODO: map second image to texture
                                                               // calculate_weights width(n,1)
-                        // calculate_jacobian(level, level_width, level_height);
+                        calculate_jacobian(level, level_width, level_height);
 
                         // parallel CUDA kernels: two streams
                                 // calculate A(6,6) = J.T * W * J   // calculate B(6,1) = -J.T * W * r
@@ -168,8 +168,11 @@ ResidualWeight weightType;   // enum type of possible residual weighting. Define
 // cublasHandle_t handle; // not used if useCUBLAS = false
 
 // device variables
-float *d_x_prime; // warped x position in the second image
-float *d_y_prime; // warped y position in the second image
+float *d_x_prime; // 3D x position in the second frame
+float *d_y_prime; // 3D y position in the second frame
+float *d_z_prime; // 3D z position in the second frame
+float *d_u_warped;  // warped x position of every pixel in the first image onto the second image
+float *d_v_warped;  // warped y position of every pixel in the first image onto the second image
 float *d_J;   // device Jacobian array for ALL residuals
 float *d_r;   // device residuals array
 float *d_b;   // device linear system inhomogeneous term array
@@ -283,7 +286,22 @@ void transform_points(int level, int level_width, int level_height) {
           int   gridSizeY = (height + dimBlock.y-1) / dimBlock.y;
           dim3  dimGrid( gridSizeX, gridSizeY, 1 );
 
-          d_transform_points <<< dimGrid, dimBlock >>> (d_x_prime, d_y_prime, d_prev[level].depth, level_width, level_height, level);
+          d_transform_points <<< dimGrid, dimBlock >>> (d_x_prime, d_y_prime, d_z_prime, d_u_warped, d_v_warped, d_prev[level].depth, level_width, level_height, level);
+}
+
+/**
+ * Calculates the jacobian at each point
+ */
+void calculate_jacobian(int level, int level_width, int level_height) {
+          // Block = 2D array of threads
+          dim3  dimBlock( g_CUDA_blockSize2DX, g_CUDA_blockSize2DY, 1 );
+
+          // Grid = 2D array of blocks
+          // gridSizeX = ceil( width / nBlocksX )
+          // gridSizeY = ceil( height / nBlocksX )
+          int   gridSizeX = (width  + dimBlock.x-1) / dimBlock.x;
+          int   gridSizeY = (height + dimBlock.y-1) / dimBlock.y;
+          dim3  dimGrid( gridSizeX, gridSizeY, 1 );
 }
 
 void allocateGPUMemory() {
@@ -291,6 +309,7 @@ void allocateGPUMemory() {
         cudaMalloc(&d_r, width*height*sizeof(float)); CUDA_CHECK;
         cudaMalloc(&d_x_prime, width*height*sizeof(float)); CUDA_CHECK;
         cudaMalloc(&d_y_prime, width*height*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_z_prime, width*height*sizeof(float)); CUDA_CHECK;
         cudaMalloc(&d_b, 6*sizeof(float)); CUDA_CHECK;
         cudaMalloc(&d_A, 6*6*sizeof(float)); CUDA_CHECK;
         cudaMalloc(&d_error, sizeof(float)); CUDA_CHECK;
@@ -322,6 +341,7 @@ void deallocateGPUMemory() {
         cudaFree(d_r); CUDA_CHECK;
         cudaFree(d_x_prime); CUDA_CHECK;
         cudaFree(d_y_prime); CUDA_CHECK;
+        cudaFree(d_z_prime); CUDA_CHECK;
         cudaFree(d_b); CUDA_CHECK;
         cudaFree(d_A); CUDA_CHECK;
         cudaFree(d_error); CUDA_CHECK;
