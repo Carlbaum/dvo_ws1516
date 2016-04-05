@@ -2,6 +2,9 @@
 #include "preprocessing.cuh"
 #include "lieAlgebra.hpp"
 #include "alignment.cuh"
+// cuBLAS
+#include <cuda_runtime.h>
+#include "cublas_v2.h"
 // #include <string> //only needed for our 'debugging'
 
 enum SolvingMethod { GAUSS_NEWTON, LEVENBERG_MARQUARDT, GRADIENT_DESCENT };
@@ -33,8 +36,8 @@ Tracker(
         int maxLevel = 4,
         int maxIterationsPerLevel = 20,
         SolvingMethod solvingMethod = GAUSS_NEWTON,
-        ResidualWeight weightType = NONE
-                                    // bool useCUBLAS = true,
+        ResidualWeight weightType = NONE,
+        bool useCUBLAS = true
         ) :
         width(width),
         height(height),
@@ -47,10 +50,17 @@ Tracker(
         // frameComputationTime(0),
         // stepCount(0),
         xi_prev(Vector6f::Zero()),
-        xi(Vector6f::Zero())
-        // useCUBLAS(useCUBLAS)
+        xi(Vector6f::Zero()),
+        useCUBLAS(useCUBLAS)
 {
-        // if (useCUBLAS) cublasCreate(&handle);
+        if (useCUBLAS) {
+                stat = cublasCreate(&handle);
+                if (stat != CUBLAS_STATUS_SUCCESS) {
+                        printf ("\n\n!---------------cuBLAS initialization failed---------------!\n\n");
+                        //return EXIT_FAILURE;
+                }
+                else printf ("\n\n!--------------cuBLAS initialization succesful--------------!\n\n");
+        }
 
         // make pyramid vector large enough to hold all levels
         d_cur.resize(maxLevel+1);
@@ -77,7 +87,7 @@ Tracker(
  * destructor
  */
 ~Tracker() {
-        // if (useCUBLAS) cublasDestroy(handle);
+        if (useCUBLAS) cublasDestroy(handle);
         deallocateGPUMemory();
 }
 
@@ -90,6 +100,7 @@ Tracker(
 Vector6f align(float *grayCur, float *depthCur) {
         fill_pyramid(d_cur, grayCur, depthCur);
 
+
         // Use the previous xi as initial guess. It is stored in a private variable
         // other option, initialize as 0:
         // xi = Vector6f::Zero();
@@ -98,7 +109,9 @@ Vector6f align(float *grayCur, float *depthCur) {
         for (int level = maxLevel; level >= minLevel; level--) {
                 int level_width = width / (1 << level); // calculating bitwise the succesive powers of 2
                 int level_height = height / (1 << level);
+                int n = level_width*level_height;
                 // set d_prev_err to big float number      TODO: directly in GPU?
+                float error_prev = std::numeric_limits<float>::max(); // initialize as a great value to make sure loop continues for at least one iteration below
 
                 bind_textures(level, level_width, level_height); // used for interpolation in the current image
 
@@ -123,6 +136,52 @@ Vector6f align(float *grayCur, float *depthCur) {
                         calculate_jacobian(level, level_width, level_height, stream1);
                         calculate_residuals(level, level_width, level_height, stream2);
                         cudaDeviceSynchronize();
+
+                        if(useCUBLAS) {
+
+                                // Matrix multiplication using cuBLAS
+                                // A = alpha * J' * J + beta * A
+                                // b = alpha * J' * r + beta * b
+                                // CUBLAS_OP_T => transpose, CUBLAS_OP_N => normal
+
+                                float alpha = 1.f, beta = 0.f;
+
+                                // calculate A(6,6) = J' * W * J, but where W=IdentityMatrix => A(6,6) = J' * J
+                                stat = cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 6, 6, n, &alpha, d_J, n, d_J, n, &beta, d_A, 6);
+                                if (stat != CUBLAS_STATUS_SUCCESS) {
+                                        printf ("\n\n!----------cuBLAS matrix multiplication: A = J'*J FAILED!----------!\n\n");
+                                        //return EXIT_FAILURE;
+                                }
+                                else cudaMemcpy(A.data(), d_A, 6*6*sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;
+
+                                // b = J' * r : 6x1
+
+                                stat = cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 6, 1, n, &alpha, d_J, n, d_r, n, &beta, d_b, 6);
+                                if (stat != CUBLAS_STATUS_SUCCESS) {
+                                        printf ("\n\n!----------cuBLAS matrix multiplication: b = J'*r FAILED!----------!\n\n");
+                                        //return EXIT_FAILURE;
+                                }
+                                else cudaMemcpy(b.data(), d_b, 6*sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;
+
+                                // Solving Ax=b using Eigen library.
+                                //xi_delta = -(A.ldlt().solve(b)); // Solve using Cholesky LDLT decomposition
+                                xi_delta = (A.ldlt().solve(-b)); // Solve using Cholesky LDLT decomposition
+
+                                xi = lieLog(lieExp(xi_delta) * lieExp(xi));
+
+                                // Calculate the mean error from the residuals. sum(errors) = r' * r => mean(sum(errors)) = (r' * r )/n
+                                float error;
+                                cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 1, 1, n, &alpha, d_r, n, d_r, n, &beta, d_error, 1);
+                                cudaMemcpy(&error, d_error, sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;
+                                error /= n;
+                                std::cout << "Error     = " << error << std::endl << "PrevError = " << error_prev << std::endl;
+                                if (error / error_prev > 0.995) {
+                                        std::cout << std::endl << "!- Almost no change in error. Breaking at iteration " << i << ", at level " << level << " -!" << std::endl;
+                                        break;
+                                }
+
+                                error_prev = error;
+                        }
 
                         // parallel CUDA kernels: two streams
                                 // calculate A(6,6) = J.T * W * J   // calculate B(6,1) = -J.T * W * r
@@ -170,9 +229,12 @@ int minLevel;   // For speed. Used if the highest precision is not required
 int width;   // width of the first frame (and all frames)
 int height;   // height of the first frame (and all frames)
 ResidualWeight weightType;   // enum type of possible residual weighting. Defined in *_jacobian.cuh
-// bool useCUBLAS;   // TODO: option to NOT use cuBLAS
+bool useCUBLAS;   // TODO: option to NOT use cuBLAS
+Matrix6f A; // A = J' * W * J
+Vector6f b; // b = J' * r
 
-// cublasHandle_t handle; // not used if useCUBLAS = false
+cublasHandle_t handle; // not used if useCUBLAS = false
+cublasStatus_t stat;
 
 // device variables
 float *d_x_prime; // 3D x position in the second frame
@@ -203,6 +265,7 @@ std::vector<Matrix3f> K_inv_pyr;   // inverse K_pyr
 //std::vector<Matrix3f> d_K_pyr_inv;
 Vector6f xi_prev;   // TODO: keeps last(?) frame for some reason
 Vector6f xi;
+Vector6f xi_delta;
 
 //_________________PRIVATE FUNCTIONS____________________________________________
 void fill_K_levels(Eigen::Matrix3f K) {
@@ -356,16 +419,16 @@ void calculate_residuals(int level, int level_width, int level_height, cudaStrea
 }
 
 void allocateGPUMemory() {
-        cudaMalloc(&d_J, width*height*6*sizeof(float)); CUDA_CHECK;
-        cudaMalloc(&d_r, width*height*sizeof(float)); CUDA_CHECK;
-        cudaMalloc(&d_x_prime, width*height*sizeof(float)); CUDA_CHECK;
-        cudaMalloc(&d_y_prime, width*height*sizeof(float)); CUDA_CHECK;
-        cudaMalloc(&d_z_prime, width*height*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_J,      width*height*6*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_r,        width*height*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_x_prime,  width*height*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_y_prime,  width*height*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_z_prime,  width*height*sizeof(float)); CUDA_CHECK;
         cudaMalloc(&d_u_warped, width*height*sizeof(float)); CUDA_CHECK;
         cudaMalloc(&d_v_warped, width*height*sizeof(float)); CUDA_CHECK;
-        cudaMalloc(&d_b, 6*sizeof(float)); CUDA_CHECK;
-        cudaMalloc(&d_A, 6*6*sizeof(float)); CUDA_CHECK;
-        cudaMalloc(&d_error, sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_b,                   6*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_A,                 6*6*sizeof(float)); CUDA_CHECK;
+        cudaMalloc(&d_error,                 sizeof(float)); CUDA_CHECK;
         // cudaMalloc(&d_visualResidual, width*height*sizeof(float)); CUDA_CHECK;
         // cudaMalloc(&d_n, sizeof(int)); CUDA_CHECK;
 
@@ -373,10 +436,10 @@ void allocateGPUMemory() {
         for (int level = 0; level <= maxLevel; level++) {
                 int level_width = width / (1 << level); // calculating bitwise the succesive powers of 2
                 int level_height = height / (1 << level);
-                cudaMalloc(&d_cur [level].gray, level_width*level_height*sizeof(float)); CUDA_CHECK;
-                cudaMalloc(&d_prev[level].gray, level_width*level_height*sizeof(float)); CUDA_CHECK;
-                cudaMalloc(&d_cur [level].depth, level_width*level_height*sizeof(float)); CUDA_CHECK;
-                cudaMalloc(&d_prev[level].depth, level_width*level_height*sizeof(float)); CUDA_CHECK;
+                cudaMalloc(&d_cur [level].gray,    level_width*level_height*sizeof(float)); CUDA_CHECK;
+                cudaMalloc(&d_prev[level].gray,    level_width*level_height*sizeof(float)); CUDA_CHECK;
+                cudaMalloc(&d_cur [level].depth,   level_width*level_height*sizeof(float)); CUDA_CHECK;
+                cudaMalloc(&d_prev[level].depth,   level_width*level_height*sizeof(float)); CUDA_CHECK;
                 cudaMalloc(&d_cur [level].gray_dx, level_width*level_height*sizeof(float)); CUDA_CHECK;
                 cudaMalloc(&d_prev[level].gray_dx, level_width*level_height*sizeof(float)); CUDA_CHECK;
                 cudaMalloc(&d_cur [level].gray_dy, level_width*level_height*sizeof(float)); CUDA_CHECK;
