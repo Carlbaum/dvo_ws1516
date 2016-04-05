@@ -628,9 +628,13 @@ __global__ void  scaleImage_CUDA_kernel( const T      *pImgSrc,
       if (isDepthImage) {
           validPixels = (p1 > 0) + (p2 > 0) + (p3 > 0) + (p4 > 0);
       }
-      pImgDst[ ch*dst_width*dst_height + iPosDst ] = 4.0f / validPixels
-                                                     * ( (1.0f - dv) * ( p1 * du_inv + p2 * du ) +
-                                                                 dv  * ( p3 * du_inv + p4 * du ) );
+      if ( validPixels > 0) {
+              pImgDst[ ch*dst_width*dst_height + iPosDst ] = 4.0f / validPixels
+                                                             * ( (1.0f - dv) * ( p1 * du_inv + p2 * du ) +
+                                                                         dv  * ( p3 * du_inv + p4 * du ) );
+      } else {
+              pImgDst[ ch*dst_width*dst_height + iPosDst ] = 0.0f;
+      }
     }//for all channels
   }//bilinear interpolation
 
