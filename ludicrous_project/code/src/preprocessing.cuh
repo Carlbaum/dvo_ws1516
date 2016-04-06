@@ -249,6 +249,7 @@ __global__  void gaussFilter2D_vertical_CUDA_kernel(
 
 
 
+
 //############################################################################
 void  gaussFilter2D_CUDA( const float   *img_src,
                           float         *img_dst,
@@ -483,7 +484,7 @@ void  imresize_CUDA( const float   *pImgSrc,
 
     float     scaleFactorX = (float)dst_width  / (float)src_width;
     float     scaleFactorY = (float)dst_height / (float)src_height;
-    float     scaleFactor  = min<float>( scaleFactorX, scaleFactorY );
+    float     scaleFactor  = std::min<float>( scaleFactorX, scaleFactorY );
 
     // Choice of Gaussian parameters based on:
 
