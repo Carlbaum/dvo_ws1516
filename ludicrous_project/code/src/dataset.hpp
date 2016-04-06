@@ -3,7 +3,7 @@
 #include "lieAlgebra.hpp"
 #include "tum_benchmark.hpp"
 
-using namespace std;
+//using namespace std;
 using namespace Eigen;
 
 struct Frame {
@@ -11,27 +11,27 @@ struct Frame {
   double colorTimestamp;
   double depthTimestamp;
   double groundtruthTimestamp;
-  string colorPath;
-  string depthPath;
+  std::string colorPath;
+  std::string depthPath;
   Vector6f groundtruthXi;
 };
 
 struct GroundtruthRow { double timestamp; Vector6f xi; };
 
-vector<GroundtruthRow> loadGroundtruthFile(string file) {
-  vector<GroundtruthRow> rows;
-  ifstream stream;
+std::vector<GroundtruthRow> loadGroundtruthFile(std::string file) {
+  std::vector<GroundtruthRow> rows;
+  std::ifstream stream;
   stream.open(file.c_str());
-  if (!stream.is_open()) { throw runtime_error("Could not open file"); }
+  if (!stream.is_open()) { throw std::runtime_error("Could not open file"); }
 
-  string line;
+  std::string line;
   while (getline(stream, line)) {
     if (line.empty() || line.compare(0, 1, "#") == 0) { continue; }
 
     GroundtruthRow row;
     float a[7];
 
-    istringstream(line)
+    std::istringstream(line)
       >> row.timestamp
       >> a[0] >> a[1] >> a[2] >> a[3] >> a[4] >> a[5] >> a[6];
 
@@ -46,20 +46,20 @@ vector<GroundtruthRow> loadGroundtruthFile(string file) {
   return rows;
 }
 
-struct ImageListRow { double timestamp; string path; };
+struct ImageListRow { double timestamp; std::string path; };
 
-vector<ImageListRow> loadImageList(string file) {
-  vector<ImageListRow> rows;
-  ifstream stream;
+std::vector<ImageListRow> loadImageList(std::string file) {
+  std::vector<ImageListRow> rows;
+  std::ifstream stream;
   stream.open(file.c_str());
-  if (!stream.is_open()) { throw runtime_error("Could not open file"); }
+  if (!stream.is_open()) { throw std::runtime_error("Could not open file"); }
 
-  string line;
+  std::string line;
   while (getline(stream, line)) {
     if (line.empty() || line.compare(0, 1, "#") == 0) { continue; }
 
     ImageListRow row;
-    istringstream(line) >> row.timestamp >> row.path;
+    std::istringstream(line) >> row.timestamp >> row.path;
 
     rows.push_back(row);
   }
@@ -68,18 +68,18 @@ vector<ImageListRow> loadImageList(string file) {
   return rows;
 }
 
-Eigen::Matrix3f loadK(string file) {
-  vector<float> Ks;
-  ifstream stream;
+Eigen::Matrix3f loadK(std::string file) {
+  std::vector<float> Ks;
+  std::ifstream stream;
   stream.open(file.c_str());
-  if (!stream.is_open()) { throw runtime_error("Could not open file"); }
+  if (!stream.is_open()) { throw std::runtime_error("Could not open file"); }
 
-  string line;
+  std::string line;
   while (getline(stream, line)) {
     if (line.empty() || line.compare(0, 1, "#") == 0) { continue; }
 
     float k;
-    istringstream(line) >> k;
+    std::istringstream(line) >> k;
 
     Ks.push_back(k);
   }
@@ -99,11 +99,11 @@ class Dataset {
 public:
   Eigen::Matrix3f K;
 
-  Dataset(string path) {
+  Dataset(std::string path) {
     // Load the data from all three files
-    vector<ImageListRow> rgbRows = loadImageList(path + "/rgb.txt");
-    vector<ImageListRow> depthRows = loadImageList(path + "/depth.txt");
-    vector<GroundtruthRow> groundtruthRows = loadGroundtruthFile(path + "/groundtruth.txt");
+    std::vector<ImageListRow> rgbRows = loadImageList(path + "/rgb.txt");
+    std::vector<ImageListRow> depthRows = loadImageList(path + "/depth.txt");
+    std::vector<GroundtruthRow> groundtruthRows = loadGroundtruthFile(path + "/groundtruth.txt");
     K = loadK(path + "/K.txt");
 
     size_t k = 0, l = 0, m = 0; double tMaxLastPushed = -INFINITY;
@@ -141,5 +141,5 @@ public:
       if (tGround == tMin) { m++; }
     }
   }
-  vector<Frame>frames;
+  std::vector<Frame>frames;
 };

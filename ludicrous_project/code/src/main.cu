@@ -8,7 +8,7 @@
 #include "tum_benchmark.hpp"
 #include "dataset.hpp"
 
-using namespace std;
+//using namespace std;
 
 // TODO: is this the proper way of using global variables inside the tracker class?
     // global variables
@@ -43,6 +43,8 @@ int main(int argc, char *argv[]) {
     // Create streams
     cudaStreamCreate ( &stream1 );
     cudaStreamCreate ( &stream2 );
+    stream1 =0;
+    stream2 =0;
 
 
 
@@ -65,8 +67,8 @@ int main(int argc, char *argv[]) {
         // input image
         string image = "";
         bool ret = getParam("i", image, argc, argv);
-        if (!ret) cerr << "ERROR: no image specified" << endl;
-        if (argc <= 1) { cout << "Usage: " << argv[0] << " -i <image> [-repeats <repeats>] [-gray]" << endl; return 1; }
+        if (!ret) cerr << "ERROR: no image specified" << std::endl;
+        if (argc <= 1) { cout << "Usage: " << argv[0] << " -i <image> [-repeats <repeats>] [-gray]" << std::endl; return 1; }
     */
     // ------- END OF PARAMETERS -------
 
@@ -119,11 +121,12 @@ int main(int argc, char *argv[]) {
         convert_mat_to_layered(imgDepth, mDepth);
 
         // TODO: THIS IS WHERE WE SHOULD CALL THE ALIGN FUNCITON
+        std::cout << "Image number: " << i << std::endl;
         tracker.align(imgGray, imgDepth);
 
         timer.end();  float t = timer.get();  // elapsed time in seconds
 
-        cout << "Time of loading + doing calculations on image #" << i  << ": " << t*1000 << " ms" << endl;
+        std::cout << "Time of loading + doing calculations on image #" << i << ": " << t*1000 << " ms" << std::endl;
         // show input image
         // showImage("Input " + std::to_string(i), mGray, 100+20*i, 100+10*i);  // show at position (x_from_left=100,y_from_above=100)
     }
