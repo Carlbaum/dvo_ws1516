@@ -31,7 +31,7 @@ Tracker(
         Eigen::Matrix3f K,
         int minLevel = 0,
         int maxLevel = 4,
-        int maxIterationsPerLevel = 5, // small for development, 20 later
+        int maxIterationsPerLevel = 20, // small for development, 20 later
         SolvingMethod solvingMethod = GAUSS_NEWTON,
         ResidualWeight weightType = NONE
                                     // bool useCUBLAS = true,
@@ -46,7 +46,6 @@ Tracker(
         // totalComputationTime(0),
         // frameComputationTime(0),
         // stepCount(0),
-        xi_prev(Vector6f::Zero()),
         xi(Vector6f::Zero()),
         A(Matrix6f::Zero()),
         b(Vector6f::Zero())
@@ -108,7 +107,7 @@ Vector6f align(float *grayCur, float *depthCur) {
 
                 // for a maximum number of iterations per level
                 for (int i = 0; i < maxIterationsPerLevel; i++) {
-                        // std::cout << level << ", " << i << std::endl;
+                        std::cout << "Iteration #" << i << std::endl;
 
                         // Calculate Rotation matrix and translation vector: CPU operation
                         convertSE3ToT(xi, R, t);
@@ -142,27 +141,45 @@ Vector6f align(float *grayCur, float *depthCur) {
                         cudaMemcpy ( b.data(), d_b, 6*sizeof(float), cudaMemcpyDeviceToHost);
 
 
-                        if (i==0) {
-                            // dim3  dimBlock( g_CUDA_blockSize2DX, g_CUDA_blockSize2DY, 1 );
-                            //
-                            // // Grid = 2D array of blocks
-                            // // gridSizeX = ceil( width / nBlocksX )
-                            // // gridSizeY = ceil( height / nBlocksX )
-                            // int   gridSizeX = (level_width  + dimBlock.x-1) / dimBlock.x;
-                            // int   gridSizeY = (level_height + dimBlock.y-1) / dimBlock.y;
-                            // dim3  dimGrid( gridSizeX, gridSizeY, 1 );
-                            // print_device_array <<< dimGrid, dimBlock >>> (d_W, level_width, level_height , level );
-
-                            std::cout << A << std::endl;
-                            std::cout << b << std::endl;
-                        }
+                        // if (i==0) {
+                        //     // dim3  dimBlock( g_CUDA_blockSize2DX, g_CUDA_blockSize2DY, 1 );
+                        //     //
+                        //     // // Grid = 2D array of blocks
+                        //     // // gridSizeX = ceil( width / nBlocksX )
+                        //     // // gridSizeY = ceil( height / nBlocksX )
+                        //     // int   gridSizeX = (level_width  + dimBlock.x-1) / dimBlock.x;
+                        //     // int   gridSizeY = (level_height + dimBlock.y-1) / dimBlock.y;
+                        //     // dim3  dimGrid( gridSizeX, gridSizeY, 1 );
+                        //     // print_device_array <<< dimGrid, dimBlock >>> (d_W, level_width, level_height , level );
+                        //
+                        //     std::cout << A << std::endl;
+                        //     std::cout << b << std::endl;
+                        // }
 
                         // solve linear system: A * delta_xi = b; with solver of Eigen library: CPU operation.      TODO: Faster to solve directly in GPU?
+                        xi_delta = -(A.ldlt().solve(b)); // Solve using Cholesky LDLT decomposition
 
-                        // if change in error is small      TODO: Compare directly in GPU?
-                                // stop iterating in this level
+                        // Convert the twist coordinates in xi & xi_delta to transformation matrices using Lie algebra
+                        // Convert the combined transformation matrix back to twist coordinates
+                        xi = lieLog(lieExp(xi_delta) * lieExp(xi));
 
-                        // save error value for next iteration: d_prev_err = d_err:     TODO: use cudaMemcpy?
+                        cudaMemcpy(&error_ratio, d_error_ratio, sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;
+                        // if the change in error is very small, break iterations loop and go to higher resolution in pyramid
+                        std::cout << "  error ratio: " << error_ratio << std::endl;
+                        if (error_ratio > 0.995) break;
+
+                        // save error value for next iteration: d_prev_err = d_err
+                        cudaMemcpy(d_error_prev, d_error, sizeof(float), cudaMemcpyDeviceToDevice); CUDA_CHECK;
+
+                        // DEBUG
+                        cv::Mat mTest(level_height, level_width, CV_32FC1);
+                        float *res = new float[level_width*level_height];
+                        //DEPTH
+                        cudaMemcpy(res, d_r, level_width*level_height*sizeof(float), cudaMemcpyDeviceToHost);
+                        convert_layered_to_mat(mTest, res);
+                        double min, max;
+                        cv::minMaxLoc(mTest, &min, &max);
+                        showImage( "Depth: " + std::to_string(level), mTest/max, 100, 100); cv::waitKey(0);
                 }
 
                 unbind_textures();  // leave texture references free for binding at level below
@@ -185,7 +202,7 @@ Vector6f align(float *grayCur, float *depthCur) {
 // double totalComputationTime;
 // double frameComputationTime;
 // int stepCount;
-Vector6f xi_total;
+// Vector6f xi_total;
 
 
 
@@ -200,6 +217,7 @@ int width;   // width of the first frame (and all frames)
 int height;   // height of the first frame (and all frames)
 ResidualWeight weightType;   // enum type of possible residual weighting. Defined in *_jacobian.cuh
 float BIG_FLOAT = 1e10;
+float error_ratio;
 // bool useCUBLAS;   // TODO: option to NOT use cuBLAS
 
 // cublasHandle_t handle; // not used if useCUBLAS = false
@@ -234,7 +252,7 @@ std::vector<Matrix3f> K_pyr;   // stores projection matrix and downsampled versi
 std::vector<Matrix3f> K_inv_pyr;   // inverse K_pyr
 //std::vector<Matrix3f> d_K_pyr;
 //std::vector<Matrix3f> d_K_pyr_inv;
-Vector6f xi_prev;   // TODO: keeps last(?) frame for some reason
+Vector6f xi_delta;   // TODO: keeps last(?) frame for some reason
 Vector6f xi;
 
 //_________________PRIVATE FUNCTIONS____________________________________________
@@ -553,7 +571,7 @@ void calculate_b (int level, int level_width, int level_height, cudaStream_t str
         // now aux is the input, and size is its size
         size = numblocksZ;
         // d_b is the output of the next reduction, is 6x1
-        grid = dim3( numblocksX, numblocksY, 1 );
+        grid = dim3( numblocksX, numblocksY, 1 );   // actually (numblocksX, 1, 1)
 
         d_reduce_pre_b_to_b <<< grid, block, blocklength*sizeof(float), stream >>> (d_b, d_pre_b, size); CUDA_CHECK;
 

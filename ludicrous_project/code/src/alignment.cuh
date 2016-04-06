@@ -362,21 +362,21 @@ __global__ void d_product_JacT_W_res(   float *pre_b,
                                         const int level_size ) {
         extern __shared__ float sdata[];
 
-        int rowJacT = blockIdx.x;   // row index for this thread of the transposed Jacobian, row index for b
+        int row = blockIdx.x;   // row index for this thread of the transposed Jacobian, row index for b
         int subBlockIdx = blockIdx.z;   // how far along each [ column of the Jacobian ]/[ row of the transposed Jacobian ] the operation starts for the block
         int tx = threadIdx.x;
-        int idxJacT = tx + subBlockIdx * blockDim.x + rowJacT * level_size ;  // thread index at the d_J array for the Jacobian transposed
-        int idxW    = tx + subBlockIdx * blockDim.x;   // thread index for the Weights and the residual
+        int idxJac = tx + subBlockIdx * blockDim.x + row * level_size ;  // thread index at the d_J array
+        int idx    = tx + subBlockIdx * blockDim.x;   // thread index for the Weights and the residual
 
         // load input into __shared__ memory
-        if ( idxW < level_size ) {  // check if W is out of bounds and simultaneously check correct index of idxJac and idxJacT (these can wrap around rows)
-                sdata[tx] = J[idxJacT] * W[idxW] * res[idxW];   // J.T * W * res
+        if ( idx < level_size ) {  // check if W is out of bounds and simultaneously check correct index of idxJac and idxJacT (these can wrap around rows)
+                sdata[tx] = J[idxJac] * W[idx] * res[idx];   // J.T * W * res
                 __syncthreads();
         } else {
                 sdata[tx] = 0;
                 __syncthreads();
         }
-        if ( idxW < level_size ) {
+        if ( idx < level_size ) {
                 // block-wide reduction in __shared__ mem
                 for(int offset = blockDim.x / 2; offset > 0; offset /= 2) {
                         if(tx < offset) {
@@ -390,7 +390,7 @@ __global__ void d_product_JacT_W_res(   float *pre_b,
                         // note that the result is per-block
                         // not per-thread
                         pre_b[ subBlockIdx     // index along the dimension of pre_b to be later reduced to get b
-                                + rowJacT * gridDim.z    // row of b times the size of each array to be reduced to get each b element. These arrays are stored head to tail along pre_b
+                                + row * gridDim.z    // row of b times the size of each array to be reduced to get each b element. These arrays are stored head to tail along pre_b
                              ] = sdata[0];
                 }
         }
