@@ -180,33 +180,6 @@ __global__ void d_set_uniform_weights( float *W,
         W[pos] = 1.0;
 }
 
-// __global__ void d_check_error_naive( float *error,
-//                                      float *error_prev,
-//                                      float *error_ratio,
-//                                      const float *residuals,
-//                                      const int width,
-//                                      const int height,
-//                                      const int level ) {
-//         if ( blockIdx.x == 0 && blockIdx.y == 0 && threadIdx.x == 0 && threadIdx.y == 0 ) {
-//                 *error = 0.0f;
-//                 for (int i = 0; i < width*height; i++) {
-//                         *error += residuals[i] * residuals[i];
-//                 }
-//                 *error /= width*height;
-//                 *error_ratio = *error / *error_prev;
-//         }
-// }
-//
-// __global__ void d_check_error_root( float *root_square_sum,  // square root of the squares of the residuals
-//                                float *error,
-//                                float *error_prev,
-//                                float *error_ratio,
-//                                const int width,
-//                                const int height ) {
-//         *error = *root_square_sum * *root_square_sum / (width*height);
-//         *error_ratio = *error / *error_prev;
-// }
-
 __global__ void d_check_error ( float *square_sum,  // square root of the squares of the residuals
                                float *error,
                                float *error_prev,
@@ -216,35 +189,6 @@ __global__ void d_check_error ( float *square_sum,  // square root of the square
         *error = *square_sum / (width*height);
         *error_ratio = *error / *error_prev;
 }
-
-// __global__ void d_root_square_sum(float *input, float *results, int n) {
-//         extern __shared__ float sdata[];
-//         int i = threadIdx.x + blockDim.x * blockIdx.x;
-//         int tx = threadIdx.x;
-//         // load input into __shared__ memory
-//         if (i < n) {
-//                 sdata[tx] = input[i] * input[i];
-//                 __syncthreads();
-//         } else {
-//                 sdata[tx] = 0;
-//         }
-//         if (i < n) {
-//                 // block-wide reduction in __shared__ mem
-//                 for(int offset = blockDim.x / 2; offset > 0; offset /= 2) {
-//                         if(tx < offset) {
-//                                 // add a partial sum upstream to our own
-//                                 sdata[tx] += sdata[tx + offset];
-//                         }
-//                         __syncthreads();
-//                 }
-//                 // finally, thread 0 writes the result
-//                 if(threadIdx.x == 0) {
-//                         // note that the result is per-block
-//                         // not per-thread
-//                         results[blockIdx.x] = sqrtf(sdata[0]);
-//                 }
-//         }
-// }
 
 __global__ void d_squares_sum(float *input, float *results, int n) {
         extern __shared__ float sdata[];

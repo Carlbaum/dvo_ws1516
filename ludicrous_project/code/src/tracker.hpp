@@ -31,7 +31,7 @@ Tracker(
         Eigen::Matrix3f K,
         int minLevel = 0,
         int maxLevel = 4,
-        int maxIterationsPerLevel = 20, // small for development, 20 later
+        int maxIterationsPerLevel = 5, // small for development, 20 later
         SolvingMethod solvingMethod = GAUSS_NEWTON,
         ResidualWeight weightType = NONE
                                     // bool useCUBLAS = true,
@@ -138,7 +138,7 @@ Vector6f align(float *grayCur, float *depthCur) {
 
                         cudaMemcpy ( A.data(), d_A, 36*sizeof(float), cudaMemcpyDeviceToHost);
 
-                        std::cout << A << std::endl;
+                        if (i==0) std::cout << A << std::endl;
 
                         // solve linear system: A * delta_xi = b; with solver of Eigen library: CPU operation.      TODO: Faster to solve directly in GPU?
 
@@ -371,63 +371,6 @@ void calculate_residuals(int level, int level_width, int level_height, cudaStrea
           d_calculate_residuals <<< dimGrid, dimBlock, 0, stream >>> (d_r, d_prev[level].gray, d_u_warped, d_v_warped, level_width, level_height, level); // texture is accessed directly. No argument needed
         //   CUDA_CHECK;
 }
-
-// /**
-//  * Calculates the error and compares with the previous one
-//  */
-// void check_error_naive(int level, int level_width, int level_height, cudaStream_t stream) {
-//         // Block = 2D array of threads
-//         dim3  dimBlock( g_CUDA_blockSize2DX, g_CUDA_blockSize2DY, 1 );
-//
-//         // Grid = 2D array of blocks
-//         // gridSizeX = ceil( width / nBlocksX )
-//         // gridSizeY = ceil( height / nBlocksX )
-//         int   gridSizeX = (width  + dimBlock.x-1) / dimBlock.x;
-//         int   gridSizeY = (height + dimBlock.y-1) / dimBlock.y;
-//         dim3  dimGrid( gridSizeX, gridSizeY, 1 );
-//
-//         d_check_error_naive <<< dimGrid, dimBlock, 0, stream >>> (d_error, d_error_prev, d_error_ratio, d_r, level_width, level_height, level);
-//
-//         // DEBUG
-//         float test;
-//         cudaMemcpy( &test, d_error, sizeof(float), cudaMemcpyDeviceToHost );
-//         std::cout << "naive :" << test << std::endl;
-// }
-//
-// /**
-//  * Calculates the error and compares with the previous one
-//  */
-// void check_error_potential_concurrence(int level, int level_width, int level_height, cudaStream_t stream=0) {
-//         int size = level_width * level_height;
-//         // threads per block equals maximum possible
-//         int blocklength = 1024;
-//         // number of needed blocsk is ceil(l_w * l_h / blocklength)
-//         int nblocks = (size + blocklength -1)/blocklength;
-//         // alloc device arrays
-//         float *d_aux = NULL;
-//         cudaMalloc(&d_aux, nblocks*sizeof(float));  // to avoid overwriting the residuals array
-//
-//         dim3 block = dim3(blocklength,1,1);
-//         dim3 grid = dim3(nblocks, 1, 1 );
-//         // first reduction
-//         d_root_square_sum <<< grid, block, blocklength*sizeof(float) >>> (d_r, d_aux, width*height);
-//         size = nblocks;
-//         nblocks = (size + blocklength -1)/blocklength;
-//         grid = dim3(nblocks, 1, 1 );
-//         // reductions until size 1
-//         while (true) {
-//                 d_root_square_sum <<<grid,block,blocklength*sizeof(float)>>> (d_aux, d_aux, size);    // not completely safe to have same input and output, but it works
-//                 if (nblocks == 1) break;
-//         }
-//
-//         // d_check_error <<< dimGrid, dimBlock, 0, stream >>> (d_error, d_error_prev, d_error_ratio, d_r, level_width, level_height, level);
-//         d_check_error_root <<< 1, 1, 0, stream >>> (d_aux, d_error, d_error_prev, d_error_ratio, level_width, level_height);
-//
-//         // DEBUG
-//         float test;
-//         cudaMemcpy( &test, d_error, sizeof(float), cudaMemcpyDeviceToHost );
-//         std::cout << "faster: " << test << std::endl;
-// }
 
 /**
  * Calculates the error and compares with the previous one
