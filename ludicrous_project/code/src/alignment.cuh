@@ -92,8 +92,13 @@ __global__ void d_calculate_jacobian( float *J,
         const int pos = x + y * width;
 
         // If the 2D position is outside the first image or the projection outside the second, do nothing
-        if ( (x >= width) || (y >= height) || (u_warped[pos] < 0) )
+        if ( (x >= width) || (y >= height) )
                 return;
+        if ( u_warped[pos] < 0 ) {
+                for(int i=0; i < 6 ; i++ )
+                    J[pos + i*width*height]  = 0.0f;
+                return;
+        }
 
         // dxfx is the image gradient in x direction times the fx of the intrinsic camera calibration
         float dxfx, dyfy;   // factors common to all jacobian positions
@@ -130,8 +135,12 @@ __global__ void d_calculate_residuals( float *r,
         const int pos = x + y * width;
 
         // If the 2D position is outside the first image or the projection outside the second, do nothing
-        if ( (x >= width) || (y >= height) || (u_warped[pos] < 0) )
+        if ( (x >= width) || (y >= height))
                 return;
+        if ( u_warped[pos] < 0 ) {
+                r[pos] = 0.0f;
+                return;
+        }
 
         r[pos] = grayPrev[pos] - tex2D( texRef_grayImg, u_warped[pos], v_warped[pos] );
 }
