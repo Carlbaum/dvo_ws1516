@@ -138,7 +138,19 @@ Vector6f align(float *grayCur, float *depthCur) {
 
                         cudaMemcpy ( A.data(), d_A, 36*sizeof(float), cudaMemcpyDeviceToHost);
 
-                        if (i==0) std::cout << A << std::endl;
+                        if (i==0) {
+                            // dim3  dimBlock( g_CUDA_blockSize2DX, g_CUDA_blockSize2DY, 1 );
+                            //
+                            // // Grid = 2D array of blocks
+                            // // gridSizeX = ceil( width / nBlocksX )
+                            // // gridSizeY = ceil( height / nBlocksX )
+                            // int   gridSizeX = (level_width  + dimBlock.x-1) / dimBlock.x;
+                            // int   gridSizeY = (level_height + dimBlock.y-1) / dimBlock.y;
+                            // dim3  dimGrid( gridSizeX, gridSizeY, 1 );
+                            // print_device_array <<< dimGrid, dimBlock >>> (d_W, level_width, level_height , level );
+
+                            std::cout << A << std::endl;
+                        }
 
                         // solve linear system: A * delta_xi = b; with solver of Eigen library: CPU operation.      TODO: Faster to solve directly in GPU?
 
@@ -329,8 +341,8 @@ void transform_points(int level, int level_width, int level_height) {
           // Grid = 2D array of blocks
           // gridSizeX = ceil( width / nBlocksX )
           // gridSizeY = ceil( height / nBlocksX )
-          int   gridSizeX = (width  + dimBlock.x-1) / dimBlock.x;
-          int   gridSizeY = (height + dimBlock.y-1) / dimBlock.y;
+          int   gridSizeX = (level_width  + dimBlock.x-1) / dimBlock.x;
+          int   gridSizeY = (level_height + dimBlock.y-1) / dimBlock.y;
           dim3  dimGrid( gridSizeX, gridSizeY, 1 );
 
           d_transform_points <<< dimGrid, dimBlock >>> (d_x_prime, d_y_prime, d_z_prime, d_u_warped, d_v_warped, d_prev[level].depth, level_width, level_height, level); CUDA_CHECK;
@@ -346,8 +358,8 @@ void calculate_jacobian(int level, int level_width, int level_height, cudaStream
           // Grid = 2D array of blocks
           // gridSizeX = ceil( width / nBlocksX )
           // gridSizeY = ceil( height / nBlocksX )
-          int   gridSizeX = (width  + dimBlock.x-1) / dimBlock.x;
-          int   gridSizeY = (height + dimBlock.y-1) / dimBlock.y;
+          int   gridSizeX = (level_width  + dimBlock.x-1) / dimBlock.x;
+          int   gridSizeY = (level_height + dimBlock.y-1) / dimBlock.y;
           dim3  dimGrid( gridSizeX, gridSizeY, 1 );
 
           d_calculate_jacobian <<< dimGrid, dimBlock, 0, stream >>> (d_J, d_x_prime, d_y_prime, d_z_prime, d_u_warped, d_v_warped, level_width, level_height, level); // texture is accessed directly. No argument needed
@@ -364,8 +376,8 @@ void calculate_residuals(int level, int level_width, int level_height, cudaStrea
           // Grid = 2D array of blocks
           // gridSizeX = ceil( width / nBlocksX )
           // gridSizeY = ceil( height / nBlocksX )
-          int   gridSizeX = (width  + dimBlock.x-1) / dimBlock.x;
-          int   gridSizeY = (height + dimBlock.y-1) / dimBlock.y;
+          int   gridSizeX = (level_width  + dimBlock.x-1) / dimBlock.x;
+          int   gridSizeY = (level_height + dimBlock.y-1) / dimBlock.y;
           dim3  dimGrid( gridSizeX, gridSizeY, 1 );
 
           d_calculate_residuals <<< dimGrid, dimBlock, 0, stream >>> (d_r, d_prev[level].gray, d_u_warped, d_v_warped, level_width, level_height, level); // texture is accessed directly. No argument needed
@@ -442,8 +454,8 @@ void calculate_weights(int level, int level_width, int level_height, cudaStream_
         // Grid = 2D array of blocks
         // gridSizeX = ceil( width / nBlocksX )
         // gridSizeY = ceil( height / nBlocksX )
-        int   gridSizeX = (width  + dimBlock.x-1) / dimBlock.x;
-        int   gridSizeY = (height + dimBlock.y-1) / dimBlock.y;
+        int   gridSizeX = (level_width  + dimBlock.x-1) / dimBlock.x;
+        int   gridSizeY = (level_height + dimBlock.y-1) / dimBlock.y;
         dim3  dimGrid( gridSizeX, gridSizeY, 1 );
 
         d_set_uniform_weights <<< dimGrid, dimBlock, 0, stream >>> (d_W, level_width, level_height); //CUDA_CHECK;
@@ -460,12 +472,13 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
             // size of A is 6x6
         int numblocksX = 6;
         int numblocksY = 6;
-            // number of subproducts for each element of A
+            // number of subproducts for each element of A = ceil(size/blocklength)
         int numblocksZ = (size + blocklength -1)/blocklength;
             // total
         int gridVolume = numblocksX*numblocksY*numblocksZ;
 
         if (numblocksZ > 1024) std::cout << "Warning: calculate_A reduction is not ready for this image size" << std::endl;
+        // std::cout << size << " " << blocklength << " " << numblocksX << " " << numblocksY << " " << numblocksZ << " " << gridVolume << std::endl;
 
         // alloc auxiliar array for all the matrix sub-products forming the 3D "volume" (stored in an array) previous to computing A
         float *d_pre_A = NULL;
@@ -474,7 +487,7 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
         dim3 block = dim3(blocklength,1,1);
         dim3 grid = dim3( numblocksX, numblocksY, numblocksZ );
 
-        // first reduction. Return reduction by 1024 in aux
+        // J'*W*J pre-calculation, yet to be reduced. Gets stored into d_pre_A (previous to A)
         d_product_JacT_W_Jac <<< grid, block, blocklength*sizeof(float), stream >>> (d_pre_A, d_J, d_W, size); CUDA_CHECK;
 
         // now aux is the input, and size is its size

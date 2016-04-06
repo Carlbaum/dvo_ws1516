@@ -177,7 +177,7 @@ __global__ void d_set_uniform_weights( float *W,
         if ( (x >= width) || (y >= height) )
                 return;
 
-        W[pos] = 1.0;
+        W[pos] = 1.0f;
 }
 
 __global__ void d_check_error ( float *square_sum,  // square root of the squares of the residuals
@@ -250,22 +250,33 @@ __global__ void d_sum(float *input, float *results, int n) {
         }
 }
 
+/**
+ * Returns a pre-computation of A=J'*W*J, just missing a reduce operation.
+ * Each block calculates a sub-product of the whole, depending on its x, y, z
+ * coordinates. z corresponds to how far along the long axis of the Jacobian the
+ * sub-product of 1024 elements starts. x and y correspond to the row and column
+ * of the resulting A matrix.
+ * @param *pre_A        output for storing this pre-computation
+ * @param *J            input Jacobian, component-wise stretched to 1D
+ * @param *W            input weights matrix, corresponding to each pixel of the images
+ * @param level_size    number of pixels in the image
+ */
 __global__ void d_product_JacT_W_Jac(   float *pre_A,
                                         const float *J,
                                         const float *W,
                                         const int level_size ) {
         extern __shared__ float sdata[];
 
-        int rowJacT = blockIdx.x;   // row index of the transposed Jacobian to operate with
-        int colJac = blockIdx.y;    // column index of the Jacobian to operate with
+        int rowJacT = blockIdx.x;   // row index for this thread of the transposed Jacobian, row index for A
+        int colJac = blockIdx.y;    // column index for this thread of the Jacobian, colum index for y
         int subBlockIdx = blockIdx.z;   // how far along each [ column of the Jacobian ]/[ row of the transposed Jacobian ] the operation starts for the block
         int tx = threadIdx.x;
         int idxJacT = tx + subBlockIdx * blockDim.x + rowJacT * level_size ;  // thread index at the d_J array for the Jacobian transposed
-        int idxJac = tx + subBlockIdx * blockDim.x + colJac * level_size ;  // thread index at the d_J array for the Jacobian
-        int idxW = tx + subBlockIdx * blockDim.x;   // thread index for the Weights
+        int idxJac  = tx + subBlockIdx * blockDim.x + colJac * level_size ;  // thread index at the d_J array for the Jacobian
+        int idxW    = tx + subBlockIdx * blockDim.x;   // thread index for the Weights
 
         // load input into __shared__ memory
-        if ( idxW < level_size ) {  // check if W is out of bounds and simultaneously correct indexing of idxJac and idxJacT
+        if ( idxW < level_size ) {  // check if W is out of bounds and simultaneously check correct index of idxJac and idxJacT (these can wrap around rows)
                 sdata[tx] = J[idxJacT] * W[idxW] * J[idxJac];   // J.T * W * J
                 __syncthreads();
         } else {
@@ -285,8 +296,8 @@ __global__ void d_product_JacT_W_Jac(   float *pre_A,
                 if(threadIdx.x == 0) {
                         // note that the result is per-block
                         // not per-thread
-                        pre_A[ blockIdx.z     // index along the dimension of pre_A to be later reduced to get A
-                                + (blockIdx.x + blockIdx.y * 6)     // index inside A, which will be stored column-wise
+                        pre_A[ subBlockIdx     // index along the dimension of pre_A to be later reduced to get A
+                                + ( rowJacT + colJac * 6)     // index inside A, which will be stored column-wise
                                         * gridDim.z    // size of each array to be reduced to get each A element. They are stored head to tail column-wise along pre_A
                              ] = sdata[0];
                 }
@@ -294,7 +305,9 @@ __global__ void d_product_JacT_W_Jac(   float *pre_A,
 }
 
 /**
- *
+ * Calculates the A matrix
+ * @param *A        output A matrix, stored column-wise
+ * @param *pre_A    input previous to A, result of d_product_JacT_W_Jac
  * @param *sizeZ    number of pre_A floats to be reduced to get each element of A. It is the Z component of the 3D matrix pre_A (stored as a linear array)
  */
 __global__ void d_reduce_pre_A_to_A(    float *A,
@@ -306,14 +319,14 @@ __global__ void d_reduce_pre_A_to_A(    float *A,
         int idx = threadIdx.x + (blockIdx.x + blockIdx.y * 6) * sizeZ;    // position along pre_A of thread pixel to load in memory
         int tx = threadIdx.x;
         // load input into __shared__ memory
-        if (idx < sizeZ) {
+        if (tx < sizeZ) {
                 sdata[tx] = pre_A[idx];
                 __syncthreads();
         } else {
                 sdata[tx] = 0;
                 __syncthreads();
         }
-        if (idx < sizeZ) {
+        if (tx < sizeZ) {
                 // block-wide reduction in __shared__ mem
                 for(int offset = blockDim.x / 2; offset > 0; offset /= 2) {
                         if(tx < offset) {
@@ -341,7 +354,7 @@ __global__ void d_reduce_pre_A_to_A(    float *A,
 //         if ( (x >= width) || (y >= height))
 //                 return;
 //
-//         if( arr[pos] != arr[pos] )
+//         if( arr[pos] != arr[pos] || true )
 //             printf("lev %d val %f pos %d ", level, arr[pos], pos);
 //         if( arr[pos] == INFINITY || arr[pos] == -INFINITY )
 //             printf("inf: lev %d val %f pos %d ", level, arr[pos], pos);
