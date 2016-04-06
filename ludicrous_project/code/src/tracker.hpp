@@ -112,13 +112,12 @@ Vector6f align(float *grayCur, float *depthCur) {
                 int n = level_width*level_height;
                 // set d_prev_err to big float number      TODO: directly in GPU?
                 float error_prev = std::numeric_limits<float>::max(); // initialize as a great value to make sure loop continues for at least one iteration below
-
+                std::cout << "    At pyramid level: " << level << std::endl;
                 bind_textures(level, level_width, level_height); // used for interpolation in the current image
 
                 // for a maximum number of iterations per level
                 for (int i = 0; i < maxIterationsPerLevel; i++) {
-                        // std::cout << level << ", " << i << std::endl;
-
+                        std::cout << "          At iteration: " << i << std::endl;
                         // Calculate Rotation matrix and translation vector: CPU operation
                         convertSE3ToT(xi, R, t);
 
@@ -137,36 +136,56 @@ Vector6f align(float *grayCur, float *depthCur) {
                         calculate_residuals(level, level_width, level_height, stream2);
                         cudaDeviceSynchronize();
 
+                        // DEBUG --- PLOT RESIDUAL IMAGES
+                        // {
+                        //     cv::Mat mTest(level_height, level_width, CV_32FC1);
+                        //     float *prev = new float[level_width*level_height];
+                        //     cudaMemcpy(prev, d_r, level_width*level_height*sizeof(float), cudaMemcpyDeviceToHost);
+                        //     convert_layered_to_mat(mTest, prev);
+                        //     showImage( "Residual at level: " + std::to_string(level) + ", iteration: " + std::to_string(i) , mTest, 300, 100); cv::waitKey(0);
+                        // }
+
+                        // Use nVidia's cuBLAS library for linear algebra calculations
                         if(useCUBLAS) {
 
-                                // Matrix multiplication using cuBLAS
-                                // A = alpha * J' * J + beta * A
-                                // b = alpha * J' * r + beta * b
-                                // CUBLAS_OP_T => transpose, CUBLAS_OP_N => normal
+                                // Matrix multiplication using cuBLAS looks like this:
+                                //      C = alpha * D * F + beta * C,    where C,D,F are matrices and alpha & beta are scalars
+                                //
+                                // For specifying whether or not the matrices D & F are transposed we use these constants:
+                                //      CUBLAS_OP_N => non-transpose,
+                                //      CUBLAS_OP_T => transpose,
+                                //      CUBLAS_OP_C => transpose conjugate
 
                                 float alpha = 1.f, beta = 0.f;
 
-                                // calculate A(6,6) = J' * W * J, but where W=IdentityMatrix => A(6,6) = J' * J
+                                // We want to calculate A = J' * W * J : (6x6) matrix
+                                //      W = IdentityMatrix => A = J' * J : (6x6) matrix
+                                //          using cuBLAS: A = alpha * J' * J + beta * A
                                 stat = cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 6, 6, n, &alpha, d_J, n, d_J, n, &beta, d_A, 6);
                                 if (stat != CUBLAS_STATUS_SUCCESS) {
                                         printf ("\n\n!----------cuBLAS matrix multiplication: A = J'*J FAILED!----------!\n\n");
-                                        //return EXIT_FAILURE;
+                                        // return EXIT_FAILURE;
                                 }
-                                else cudaMemcpy(A.data(), d_A, 6*6*sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;
+                                else {
+                                        //printf ("\n\n!----------cuBLAS matrix multiplication: A = J'*J SUCCESSFUL!----------!\n\n");
+                                        cudaMemcpy(A.data(), d_A, 6*6*sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;
+                                }
 
-                                // b = J' * r : 6x1
-
+                                // We want to calculate b = J' * W * r : (6x1) vector
+                                //      W = IdentityMatrix => b = J' * r : (6x1) vector
+                                //          using cuBLAS: b = alpha * J' * r + beta * b
                                 stat = cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 6, 1, n, &alpha, d_J, n, d_r, n, &beta, d_b, 6);
                                 if (stat != CUBLAS_STATUS_SUCCESS) {
                                         printf ("\n\n!----------cuBLAS matrix multiplication: b = J'*r FAILED!----------!\n\n");
-                                        //return EXIT_FAILURE;
+                                        // return EXIT_FAILURE;
                                 }
-                                else cudaMemcpy(b.data(), d_b, 6*sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;
+                                else {cudaMemcpy(b.data(), d_b, 6*sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;}
 
-                                // Solving Ax=b using Eigen library.
-                                //xi_delta = -(A.ldlt().solve(b)); // Solve using Cholesky LDLT decomposition
-                                xi_delta = (A.ldlt().solve(-b)); // Solve using Cholesky LDLT decomposition
+                                // Solving the linear system: A * xi_delta = b, using the Eigen library.
+                                xi_delta = -(A.ldlt().solve(b)); // Solve using Cholesky LDLT decomposition
 
+                                // Convert the twist coordinates in xi & xi_delta to transformation matrices using Lie algebra
+                                // Convert the combined transformation matrix back to twist coordinates
                                 xi = lieLog(lieExp(xi_delta) * lieExp(xi));
 
                                 // Calculate the mean error from the residuals. sum(errors) = r' * r => mean(sum(errors)) = (r' * r )/n
@@ -174,11 +193,8 @@ Vector6f align(float *grayCur, float *depthCur) {
                                 cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 1, 1, n, &alpha, d_r, n, d_r, n, &beta, d_error, 1);
                                 cudaMemcpy(&error, d_error, sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;
                                 error /= n;
-                                std::cout << "Error     = " << error << std::endl << "PrevError = " << error_prev << std::endl;
-                                if (error / error_prev > 0.995) {
-                                        std::cout << std::endl << "!- Almost no change in error. Breaking at iteration " << i << ", at level " << level << " -!" << std::endl;
-                                        break;
-                                }
+                                // if the change in error is very small, break iterations loop and go to higher resolution in pyramid
+                                if (error / error_prev > 0.995 || error == 0) break;
 
                                 error_prev = error;
                         }
@@ -355,7 +371,7 @@ void define_texture_parameters() {
 
 void bind_textures(int level, int level_width, int level_height) {
         cudaChannelFormatDesc desc = cudaCreateChannelDesc<float>(); // number of bits for each texture
-        int pitch = width*sizeof(float);
+        int pitch = level_width*sizeof(float);
         cudaBindTexture2D(NULL, &texRef_grayImg, d_cur[level].gray, &desc, level_width, level_height, pitch);
         cudaBindTexture2D(NULL, &texRef_gray_dx, d_cur[level].gray_dx, &desc, level_width, level_height, pitch);
         cudaBindTexture2D(NULL, &texRef_gray_dy, d_cur[level].gray_dy, &desc, level_width, level_height, pitch);
@@ -417,6 +433,8 @@ void calculate_residuals(int level, int level_width, int level_height, cudaStrea
 
           d_calculate_residuals <<< dimGrid, dimBlock, 0, stream >>> (d_r, d_prev[level].gray, d_u_warped, d_v_warped, level_width, level_height, level); // texture is accessed directly. No argument needed
 }
+
+
 
 void allocateGPUMemory() {
         cudaMalloc(&d_J,      width*height*6*sizeof(float)); CUDA_CHECK;
