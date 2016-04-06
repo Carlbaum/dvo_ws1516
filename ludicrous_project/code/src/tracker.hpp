@@ -48,7 +48,8 @@ Tracker(
         // stepCount(0),
         xi_prev(Vector6f::Zero()),
         xi(Vector6f::Zero()),
-        A(Matrix6f::Zero())
+        A(Matrix6f::Zero()),
+        b(Vector6f::Zero())
         // useCUBLAS(useCUBLAS)
 {
         // if (useCUBLAS) cublasCreate(&handle);
@@ -135,8 +136,11 @@ Vector6f align(float *grayCur, float *depthCur) {
                                 // TODO: best order to calculate the previous multiplications. J.T * width first? (used by both) or all together avoiding reads?
                                 // probably A and be separated are better. Less R&W. Less code.
                         calculate_A ( level, level_width, level_height ); //, stream1 );
+                        cudaMemcpy ( A.data(), d_A, 6*6*sizeof(float), cudaMemcpyDeviceToHost);
 
-                        cudaMemcpy ( A.data(), d_A, 36*sizeof(float), cudaMemcpyDeviceToHost);
+                        calculate_b ( level, level_width, level_height ); //, stream1 );
+                        cudaMemcpy ( b.data(), d_b, 6*sizeof(float), cudaMemcpyDeviceToHost);
+
 
                         if (i==0) {
                             // dim3  dimBlock( g_CUDA_blockSize2DX, g_CUDA_blockSize2DY, 1 );
@@ -150,6 +154,7 @@ Vector6f align(float *grayCur, float *depthCur) {
                             // print_device_array <<< dimGrid, dimBlock >>> (d_W, level_width, level_height , level );
 
                             std::cout << A << std::endl;
+                            std::cout << b << std::endl;
                         }
 
                         // solve linear system: A * delta_xi = b; with solver of Eigen library: CPU operation.      TODO: Faster to solve directly in GPU?
@@ -221,6 +226,7 @@ Matrix3f R;
 Matrix3f RK_inv;
 Vector3f t;
 Matrix6f A;
+Vector6f b;
 
 // host variables
 // watch out: Eigen::Matrix are stored column wise
@@ -496,6 +502,60 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
         grid = dim3( numblocksX, numblocksY, 1 );
 
         d_reduce_pre_A_to_A <<< grid, block, blocklength*sizeof(float), stream >>> (d_A, d_pre_A, size); CUDA_CHECK;
+
+        // reductions until size 1 // not implemented, required for larger images TODO
+        // while (true) {
+        //         d_sum <<< grid, block, blocklength*sizeof(float), stream >>> (d_aux, d_aux2, size); CUDA_CHECK;
+        //         // if no more reductions are needed, break. Result is in d_aux2
+        //         if (nblocks == 1) break;
+        //
+        //         // // copy d_aux2 to the beginning of d_aux
+        //         // cudaMemcpy( d_aux, d_aux2, nblocks*sizeof(float), cudaMemcpyDeviceToDevice ); CUDA_CHECK;
+        //         // swap pointers of aux and aux2
+        //         d_swap = d_aux; d_aux = d_aux2; d_aux2 = d_swap;
+        //         // now aux2 is the input, copied into d_aux, and size is its size
+        //         size = nblocks;
+        //         // nblocks is the output of the next reduction
+        //         nblocks = (size + blocklength -1)/blocklength;
+        //         grid = dim3(nblocks, 1, 1 );
+        // }
+}
+
+/**
+ * Calculate array b of the linear system
+ */
+void calculate_b (int level, int level_width, int level_height, cudaStream_t stream=0) {
+        int size = level_width * level_height;
+        // threads per block equals maximum possible
+        int blocklength = 1024;
+        // number of needed blocks in 3D. Now it is actually 2D becaus numblocksY=1, but it keeps the structure of calculate_A, so it is 3D.
+            // size of b is 6x1
+        int numblocksX = 6;
+        int numblocksY = 1;
+            // number of subproducts for each element of b = ceil(size/blocklength)
+        int numblocksZ = (size + blocklength -1)/blocklength;
+            // total
+        int gridVolume = numblocksX*numblocksY*numblocksZ;
+
+        if (numblocksZ > 1024) std::cout << "Warning: calculate_A reduction is not ready for this image size" << std::endl;
+        // std::cout << size << " " << blocklength << " " << numblocksX << " " << numblocksY << " " << numblocksZ << " " << gridVolume << std::endl;
+
+        // alloc auxiliar array for all the matrix sub-products forming the 3D "volume" (stored in an array) previous to computing A
+        float *d_pre_b = NULL;
+        cudaMalloc(&d_pre_b, gridVolume*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
+
+        dim3 block = dim3(blocklength,1,1);
+        dim3 grid = dim3( numblocksX, numblocksY, numblocksZ );
+
+        // J'*W*J pre-calculation, yet to be reduced. Gets stored into d_pre_b (previous to A)
+        d_product_JacT_W_res <<< grid, block, blocklength*sizeof(float), stream >>> (d_pre_b, d_J, d_W, d_r, size); CUDA_CHECK;
+
+        // now aux is the input, and size is its size
+        size = numblocksZ;
+        // d_b is the output of the next reduction, is 6x1
+        grid = dim3( numblocksX, numblocksY, 1 );
+
+        d_reduce_pre_b_to_b <<< grid, block, blocklength*sizeof(float), stream >>> (d_b, d_pre_b, size); CUDA_CHECK;
 
         // reductions until size 1 // not implemented, required for larger images TODO
         // while (true) {

@@ -344,6 +344,98 @@ __global__ void d_reduce_pre_A_to_A(    float *A,
         }
 }
 
+/**
+ * Returns a pre-computation of b=J'*W*r, just missing a reduce operation.
+ * Each block calculates a sub-product of the whole, depending on its x, y, z
+ * coordinates. z corresponds to how far along the long axis of the Jacobian the
+ * sub-product of 1024 elements starts. x corresponds to the row of the resulting b array.
+ * @param *pre_b        output for storing this pre-computation
+ * @param *J            input Jacobian, component-wise stretched to 1D
+ * @param *W            input weights matrix, corresponding to each pixel of the images
+ * @param *res          input residual array
+ * @param level_size    number of pixels in the image
+ */
+__global__ void d_product_JacT_W_res(   float *pre_b,
+                                        const float *J,
+                                        const float *W,
+                                        const float *res,
+                                        const int level_size ) {
+        extern __shared__ float sdata[];
+
+        int rowJacT = blockIdx.x;   // row index for this thread of the transposed Jacobian, row index for b
+        int subBlockIdx = blockIdx.z;   // how far along each [ column of the Jacobian ]/[ row of the transposed Jacobian ] the operation starts for the block
+        int tx = threadIdx.x;
+        int idxJacT = tx + subBlockIdx * blockDim.x + rowJacT * level_size ;  // thread index at the d_J array for the Jacobian transposed
+        int idxW    = tx + subBlockIdx * blockDim.x;   // thread index for the Weights and the residual
+
+        // load input into __shared__ memory
+        if ( idxW < level_size ) {  // check if W is out of bounds and simultaneously check correct index of idxJac and idxJacT (these can wrap around rows)
+                sdata[tx] = J[idxJacT] * W[idxW] * res[idxW];   // J.T * W * res
+                __syncthreads();
+        } else {
+                sdata[tx] = 0;
+                __syncthreads();
+        }
+        if ( idxW < level_size ) {
+                // block-wide reduction in __shared__ mem
+                for(int offset = blockDim.x / 2; offset > 0; offset /= 2) {
+                        if(tx < offset) {
+                                // add a partial sum upstream to our own
+                                sdata[tx] += sdata[tx + offset];
+                        }
+                        __syncthreads();
+                }
+                // finally, thread 0 writes the result
+                if(threadIdx.x == 0) {
+                        // note that the result is per-block
+                        // not per-thread
+                        pre_b[ subBlockIdx     // index along the dimension of pre_b to be later reduced to get b
+                                + rowJacT * gridDim.z    // row of b times the size of each array to be reduced to get each b element. These arrays are stored head to tail along pre_b
+                             ] = sdata[0];
+                }
+        }
+}
+
+/**
+ * Calculates the b array
+ * @param *b        output b array
+ * @param *pre_b    input previous to b, result of d_product_JacT_W_res
+ * @param *sizeZ    number of pre_b floats to be reduced to get each element of b. It is the Z component of the 3D matrix (actually 2D because blockDim.y=1) pre_b (stored as a linear array)
+ */
+__global__ void d_reduce_pre_b_to_b(    float *b,
+                                        float *pre_b,
+                                        int sizeZ ) {
+        extern __shared__ float sdata[];
+        // blockIdx.x is the row of A
+        // blockIdx.y is the column of A
+        int idx = threadIdx.x + blockIdx.x * sizeZ;    // position along pre_b of thread pixel to load in memory
+        int tx = threadIdx.x;
+        // load input into __shared__ memory
+        if (tx < sizeZ) {
+                sdata[tx] = pre_b[idx];
+                __syncthreads();
+        } else {
+                sdata[tx] = 0;
+                __syncthreads();
+        }
+        if (tx < sizeZ) {
+                // block-wide reduction in __shared__ mem
+                for(int offset = blockDim.x / 2; offset > 0; offset /= 2) {
+                        if(tx < offset) {
+                                // add a partial sum upstream to our own
+                                sdata[tx] += sdata[tx + offset];
+                        }
+                        __syncthreads();
+                }
+                // finally, thread 0 writes the result
+                if(threadIdx.x == 0) {
+                        // note that the result is per-block
+                        // not per-thread
+                        b[ blockIdx.x ] = sdata[0];
+                }
+        }
+}
+
 // // DEBUG
 // __global__ void print_device_array( float *arr, const int width, const int height, const int level) {
 //         // Get the 2D-coordinate of the pixel of the current thread
