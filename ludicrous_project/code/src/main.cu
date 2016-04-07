@@ -43,8 +43,6 @@ int main(int argc, char *argv[]) {
     // Create streams
     cudaStreamCreate ( &stream1 );
     cudaStreamCreate ( &stream2 );
-    stream1 =0;
-    stream2 =0;
 
 
 
@@ -52,7 +50,8 @@ int main(int argc, char *argv[]) {
 
     // Path to data set
     // this program will use all the images described in the txt files
-    std::string path = "../data/freiburg1_xyz_first_10";
+    // std::string path = "../data/rgbd_dataset_freiburg1_xyz";
+    std::string path = "../data/rgbd_dataset_freiburg1_desk";
     getParam("path", path, argc, argv);
     std::cout << "Path to dataset: " << path << std::endl;
 
@@ -62,6 +61,11 @@ int main(int argc, char *argv[]) {
     numberOfLevels = std::max(1, numberOfLevels);
     numberOfLevels = std::min(MAX_LEVELS, numberOfLevels); // 1/512 size reduction is in some cases already too large
     std::cout << "number of levels in pyramids: " << numberOfLevels << std::endl;
+
+    // gives the number of levels of the pyramids
+    bool tDistWeights = false;
+    getParam("tDistWeights", tDistWeights, argc, argv);
+    std::cout << "tDistWeights: " << tDistWeights << std::endl;
 
     /* FROM THE EXERCISES, DON'T THINK WE NEED THIS
         // input image
@@ -78,8 +82,9 @@ int main(int argc, char *argv[]) {
     std::vector<double> timestamps;
     Eigen::Matrix3f K = dataset.K;
 
-    // This will eventually be printed as output
-    //std::vector<Eigen::Matrix4f> poses;
+    // These poses will eventually be printed as output
+    std::vector<Eigen::Matrix4f> poses;
+    Vector6f xi_current;
 
     // Load images for frame 0, for initialization purposes
     cv::Mat mGray = loadIntensity(dataset.frames[0].colorPath);
@@ -98,15 +103,14 @@ int main(int argc, char *argv[]) {
     convert_mat_to_layered(imgDepth, mDepth);
 
     // initialize the tracker
-    Tracker tracker(imgGray, imgDepth, w, h, K, 0, numberOfLevels-1);
+    Tracker tracker(imgGray, imgDepth, w, h, K, 0, numberOfLevels-1,tDistWeights);
 
     // TODO: WE NEED TO INITIALIZE THE IMAGES BEFORE THE MAIN LOOP
 
-    /* This is not really needed yet, uncomment when we need it
+
     // Store pose for frame 0
     poses.push_back(Matrix4f::Identity());
     timestamps.push_back(dataset.frames[0].timestamp);
-    */
 
     std::cout << "Hello world" << std::endl;
     for (size_t i = 1; i < dataset.frames.size(); ++i) {
@@ -122,15 +126,20 @@ int main(int argc, char *argv[]) {
 
         // TODO: THIS IS WHERE WE SHOULD CALL THE ALIGN FUNCITON
         std::cout << "Image number: " << i << std::endl;
-        tracker.align(imgGray, imgDepth);
+        xi_current = tracker.align(imgGray, imgDepth);
 
         timer.end();  float t = timer.get();  // elapsed time in seconds
 
         std::cout << "Time of loading + doing calculations on image #" << i << ": " << t*1000 << " ms" << std::endl;
         // show input image
         // showImage("Input " + std::to_string(i), mGray, 100+20*i, 100+10*i);  // show at position (x_from_left=100,y_from_above=100)
+        // Update and push absolute pose
+        poses.push_back(lieExp(xi_current));
+        timestamps.push_back(dataset.frames[i].timestamp);
     }
 
+    // Save poses to disk
+    savePoses( path + "our_trajectory.txt", poses, timestamps);
 
     cv::waitKey(0);
     cvDestroyAllWindows();

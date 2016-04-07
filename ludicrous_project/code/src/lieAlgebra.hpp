@@ -4,13 +4,13 @@
 #include "eigen_typedef.h"
 
 using namespace Eigen;
+
 /**
- * Convert xi twist coordinates to rotation matrix and translation vector
- * @param xi twist coordinates array of the form (v1, v2, v3, w1, w2, w3)
- * @param R  output rotation matrix
- * @param t  output translation vector
+ * Uses Lie algebra to convert the 4x4 transformation matrix T to twist coordinates xi.
+ * @param  T [4x4 transformation matrix]
+ * @return   [Vector6f of twist coordinates (v1,v2,v3,w1,w2,w3)]
  */
- Vector6f lieLog(const Matrix4f &T) {
+Vector6f lieLog(const Matrix4f &T) {
      // norm_w is the Euclidean norm of w
      Matrix3f R = T.topLeftCorner(3,3);
      Vector3f t = T.topRightCorner(3,1);
@@ -36,8 +36,19 @@ using namespace Eigen;
 
      xi.tail(3) << w_hat(2,1) , w_hat(0,2) , w_hat(1,0);
      return xi;
- }
+}
 
+/**
+ * Uses Lie algebra to convert twist coordinates xi to a 4x4 transformation
+ * matrix T, which consists of a 3x3 rotation matrix and a 3x1 translation vector.
+ * Last row = 0,0,0,1
+ *
+ *	T = | R  t |
+ *		| 0  1 |
+ *
+ * @param  xi [Vector6f of twist coordinates (v1,v2,v3,w1,w2,w3)]
+ * @return    [Transformation matrix T]
+ */
 Matrix4f lieExp(const Vector6f &xi) {
     float norm_w = xi.tail(3).norm();
     Matrix3f w_hat;
@@ -70,6 +81,13 @@ Matrix4f lieExp(const Vector6f &xi) {
                   0 ,     0 ,     0 ,   1;
     return output;
 }
+
+/**
+ * Convert xi twist coordinates to rotation matrix and translation vector
+ * @param xi twist coordinates array of the form (v1, v2, v3, w1, w2, w3)
+ * @param R  output rotation matrix
+ * @param t  output translation vector
+ */
 void convertSE3ToT(const Vector6f &xi, Matrix3f &R, Vector3f &t) {
     float norm_w = xi.tail(3).norm();
     Matrix3f w_hat;
