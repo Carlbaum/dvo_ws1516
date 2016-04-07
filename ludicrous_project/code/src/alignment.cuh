@@ -4,6 +4,12 @@
 
 #define TDIST_DOF 5
 
+//_____________________________________________
+//_____________________________________________
+//________CODE USED IN ALL CASES
+//_____________________________________________
+//_____________________________________________
+
 __global__ void d_transform_points( float *x_prime,
                                     float *y_prime,
                                     float *z_prime,
@@ -74,22 +80,6 @@ __global__ void d_transform_points( float *x_prime,
         // }
 }
 
-
-
-
-/**
- * [d_calculate_jacobian description]
- * @param  {[type]} float *J            [description]
- * @param  {[type]} const float         *x_prime      [description]
- * @param  {[type]} const float         *y_prime      [description]
- * @param  {[type]} const float         *z_prime      [description]
- * @param  {[type]} const float         *u_warped     [description]
- * @param  {[type]} const float         *v_warped     [description]
- * @param  {[type]} const int           width         [description]
- * @param  {[type]} const int           height        [description]
- * @param  {[type]} const int           level         [description]
- * @return {[type]}       [description]
- */
 __global__ void d_calculate_jacobian( float *J,
                                     const float *x_prime,
                                     const float *y_prime,
@@ -178,34 +168,11 @@ __global__ void d_calculate_residuals( float *r,
         r[pos] = grayPrev[pos] - tex2D( texRef_grayImg, u_warped[pos], v_warped[pos] );
 }
 
-__global__ void d_calculate_jtw( float *JTW,
-                                 const float *J,
-                                 const float *W,
-                                 const int width,
-                                 const int height) {
-         int x = threadIdx.x + blockIdx.x * blockDim.x;
-         int y = threadIdx.y;
-         int idx = x + y*width;
-         if ( x < width ) {
-                 JTW[idx] = J[idx] * W[x];
-         }
- }
-
- __global__ void d_calculate_variance(float *weights,
-                                      const float *residuals,
-                                      const int width,
-                                      const int height,
-                                      float variance) {
-        int x = threadIdx.x + blockIdx.x * blockDim.x;
-        int y = threadIdx.y + blockIdx.y * blockDim.y;
-
-        if (x < width && y < height) {
-                float r_data_squared = residuals[x + y*width] * residuals[x + y*width];
-                //TDIST_DOF is degrees of freedom and is set to 5 as a compiler variable
-                weights[x + y*width] = r_data_squared * ( (TDIST_DOF + 1.0f) / (TDIST_DOF + (r_data_squared) / (variance) ) );
-        }
-}
-
+//_____________________________________________
+//_____________________________________________
+//________CODE FOR CALCULATING WEIGHTS
+//_____________________________________________
+//_____________________________________________
 
 __global__ void d_set_uniform_weights( float *W,
                                       const int width,
@@ -222,12 +189,41 @@ __global__ void d_set_uniform_weights( float *W,
         W[pos] = 1.0f;
 }
 
-__global__ void d_get_error ( float *square_sum,  // sum of the squares of the residuals
-                               float *error,
-                               const int width,
-                               const int height ) {
-        *error = *square_sum / (width*height);
+__global__ void d_calculate_tdist_variance(float *weights,
+                                      const float *residuals,
+                                      const int width,
+                                      const int height,
+                                      float variance) {
+        int x = threadIdx.x + blockIdx.x * blockDim.x;
+        int y = threadIdx.y + blockIdx.y * blockDim.y;
+
+        if (x < width && y < height) {
+                float r_data_squared = residuals[x + y*width] * residuals[x + y*width];
+                //TDIST_DOF is degrees of freedom and is set to 5 as a compiler variable
+                weights[x + y*width] = r_data_squared * ( (TDIST_DOF + 1.0f) / (TDIST_DOF + (r_data_squared) / (variance) ) );
+        }
 }
+
+__global__ void d_calculate_tdist_weights( float *weights,
+                                     const float *residuals,
+                                     const int width,
+                                     const int height,
+                                     float variance) {
+       int x = threadIdx.x + blockIdx.x * blockDim.x;
+       int y = threadIdx.y + blockIdx.y * blockDim.y;
+
+       if (x < width && y < height) {
+               float r_data_squared = residuals[x + y*width] * residuals[x + y*width];
+               //TDIST_DOF is degrees of freedom and is set to 5 at the very top
+               weights[x + y*width] = ( (TDIST_DOF + 1.0f) / (TDIST_DOF + (r_data_squared) / (variance) ) );
+       }
+}
+
+//_____________________________________________
+//_____________________________________________
+//________CODE FOR REDUCTIONS ON A LINEAR ARRAY
+//_____________________________________________
+//_____________________________________________
 
 __global__ void d_squares_sum(float *input, float *results, int n) {
         extern __shared__ float sdata[];
@@ -259,21 +255,6 @@ __global__ void d_squares_sum(float *input, float *results, int n) {
         }
 }
 
-__global__ void d_calculate_weights( float *weights,
-                                     const float *residuals,
-                                     const int width,
-                                     const int height,
-                                     float variance) {
-       int x = threadIdx.x + blockIdx.x * blockDim.x;
-       int y = threadIdx.y + blockIdx.y * blockDim.y;
-
-       if (x < width && y < height) {
-               float r_data_squared = residuals[x + y*width] * residuals[x + y*width];
-               //TDIST_DOF is degrees of freedom and is set to 5 at the very top
-               weights[x + y*width] = ( (TDIST_DOF + 1.0f) / (TDIST_DOF + (r_data_squared) / (variance) ) );
-       }
-}
-
 __global__ void d_sum(float *input, float *results, int n) {
         extern __shared__ float sdata[];
         int i = threadIdx.x + blockDim.x * blockIdx.x;
@@ -303,6 +284,38 @@ __global__ void d_sum(float *input, float *results, int n) {
                 }
         }
 }
+
+//_______________________________________________________
+//_______________________________________________________
+//________OTHER CODE
+//_______________________________________________________
+//_______________________________________________________
+
+__global__ void d_get_error ( float *square_sum,  // sum of the squares of the residuals
+                               float *error,
+                               const int width,
+                               const int height ) {
+        *error = *square_sum / (width*height);
+}
+
+__global__ void d_calculate_jtw( float *JTW,
+                                 const float *J,
+                                 const float *W,
+                                 const int width,
+                                 const int height) {
+         int x = threadIdx.x + blockIdx.x * blockDim.x;
+         int y = threadIdx.y;
+         int idx = x + y*width;
+         if ( x < width ) {
+                 JTW[idx] = J[idx] * W[x];
+         }
+ }
+
+//_______________________________________________________
+//_______________________________________________________
+//________CODE REPLACING MATRIX MULTIPLICATIONS IN cuBLAS
+//_______________________________________________________
+//_______________________________________________________
 
 /**
  * Returns a pre-computation of A=J'*W*J, just missing a reduce operation.
