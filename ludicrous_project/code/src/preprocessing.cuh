@@ -575,7 +575,8 @@ void  image_derivatives_CUDA( const float   *pImgSrc,
                               float         *pImgDX,
                               float         *pImgDY,
                               int           width,
-                              int           height)
+                              int           height,
+                              cudaStream_t  &stream)
 {
     // Block = 2D array of threads
     dim3  dimBlock( g_CUDA_blockSize2DX, g_CUDA_blockSize2DY, 1 );
@@ -588,6 +589,6 @@ void  image_derivatives_CUDA( const float   *pImgSrc,
     int   gridSizeY = (height + dimBlock.y-1) / dimBlock.y;
     dim3  dimGrid( gridSizeX, gridSizeY, 1 );
 
-    compute_image_derivatives_CUDA <<<dimGrid, dimBlock>>> (pImgSrc, pImgDX, pImgDY, width, height);
-    cudaDeviceSynchronize();
+    compute_image_derivatives_CUDA <<<dimGrid, dimBlock, 0, stream >>> (pImgSrc, pImgDX, pImgDY, width, height);
+    // cudaDeviceSynchronize();
 }
