@@ -652,7 +652,7 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
                 // JTW = J' * W, that is the transpose of the jacobian multiplied by the diagonal matrix W, storing weights calculated using the residuals
                 calculate_jtw(level, level_width, level_height);
                 stat = cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 6, 6, n, &alpha, d_JTW, n, d_J, n, &beta, d_A, 6);
-                std::cout << "We are using weights!!" << std::endl;
+                // std::cout << "We are using weights!!" << std::endl;
         }
 
         if (stat != CUBLAS_STATUS_SUCCESS) {
