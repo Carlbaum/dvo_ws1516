@@ -138,7 +138,19 @@ int main(int argc, char *argv[]) {
     }
 
     // Save poses to disk
-    savePoses( path + "our_trajectory.txt", poses, timestamps);
+    std::string options = "";
+    if (tDistWeights) {
+        options += "_tdist";
+    } else {
+        options += "_gdist";
+    }
+    #ifdef ENABLE_CUBLAS
+        options += "_cublas";
+    #else
+        options += "_nocublas";
+    #endif
+    
+    savePoses( path +options+ "_trajectory.txt", poses, timestamps);
 
     cv::waitKey(0);
     cvDestroyAllWindows();
