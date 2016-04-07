@@ -72,7 +72,7 @@ Eigen::Matrix3f loadK(std::string file) {
   std::vector<float> Ks;
   std::ifstream stream;
   stream.open(file.c_str());
-  if (!stream.is_open()) { throw std::runtime_error("Could not open file"); }
+  if (!stream.is_open()) { throw std::runtime_error("Could not open file K.txt"); }
 
   std::string line;
   while (getline(stream, line)) {

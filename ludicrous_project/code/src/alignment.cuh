@@ -2,6 +2,7 @@
 #include <stdio.h>
 // #include <Eigen/Dense>  //TODO: viable to use Eigen in CUDA?
 
+#define TDIST_DOF 5
 
 __global__ void d_transform_points( float *x_prime,
                                     float *y_prime,
@@ -118,7 +119,7 @@ __global__ void d_calculate_jacobian( float *J,
         float xp, yp, zp;   // for easyness of reading and debugging
         xp = x_prime[pos]; yp = y_prime[pos]; zp = z_prime[pos];
 
-        if (zp == 0) printf("WARRNING! DIVIDE BY ZERO!!!"); // TODO
+        if (zp == 0) printf("WARNING! DIVIDE BY zp ZERO in d_calculate_jacobian!!!"); // TODO
 
         J[pos + 0*width*height] = - dxfx / zp;
         J[pos + 1*width*height] = - dyfy / zp;
@@ -164,6 +165,36 @@ __global__ void d_calculate_residuals( float *r,
 
         r[pos] = grayPrev[pos] - tex2D( texRef_grayImg, u_warped[pos], v_warped[pos] );
 }
+
+__global__ void d_calculate_jtw( float *JTW,
+                                 const float *J,
+                                 const float *W,
+                                 const int width,
+                                 const int height) {
+        int x = threadIdx.x + blockIdx.x * blockDim.x;
+        int y = threadIdx.y;
+        int idx = x + y*width;
+        if ( x < width ) {
+                JTW[idx] = J[idx] * W[x];
+        }
+}
+
+__global__ void d_calculate_variance( float *weights,
+                                      const float *residuals,
+                                      const int width,
+                                      const int height,
+                                      float variance) {
+        int x = threadIdx.x + blockIdx.x * blockDim.x;
+        int y = threadIdx.y + blockIdx.y * blockDim.y;
+
+        if (x < width && y < height) {
+                float r_data_squared = residuals[x + y*width] * residuals[x + y*width];
+                //TDIST_DOF is degrees of freedom and is set to 5 as a compiler variable
+                weights[x + y*width] = r_data_squared * ( (TDIST_DOF + 1.0f) / (TDIST_DOF + (r_data_squared) / (variance) ) );
+        }
+}
+
+
 
 __global__ void d_set_uniform_weights( float *W,
                                       const int width,
@@ -218,6 +249,21 @@ __global__ void d_squares_sum(float *input, float *results, int n) {
                         results[blockIdx.x] = sdata[0];
                 }
         }
+}
+
+__global__ void d_calculate_weights( float *weights,
+                                     const float *residuals,
+                                     const int width,
+                                     const int height,
+                                     float variance) {
+       int x = threadIdx.x + blockIdx.x * blockDim.x;
+       int y = threadIdx.y + blockIdx.y * blockDim.y;
+
+       if (x < width && y < height) {
+               float r_data_squared = residuals[x + y*width] * residuals[x + y*width];
+               //TDIST_DOF is degrees of freedom and is set to 5 at the very top
+               weights[x + y*width] = ( (TDIST_DOF + 1.0f) / (TDIST_DOF + (r_data_squared) / (variance) ) );
+       }
 }
 
 __global__ void d_sum(float *input, float *results, int n) {
