@@ -12,7 +12,7 @@
 
 // TODO: is this the proper way of using global variables inside the tracker class?
     // global variables
-    const int MAX_LEVELS = 10;
+    const int MAX_LEVELS = 5;
         // CUDA related
     int             devID;
     cudaDeviceProp  props;
