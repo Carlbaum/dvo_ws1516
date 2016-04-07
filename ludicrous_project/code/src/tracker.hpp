@@ -8,7 +8,7 @@
 // #include <string> //only needed for our 'debugging'
 
 enum SolvingMethod { GAUSS_NEWTON, LEVENBERG_MARQUARDT, GRADIENT_DESCENT };
-enum ResidualWeight { NONE, HUBER, TDIST };
+// enum ResidualWeight { NONE, HUBER, TDIST };
 
 class Tracker {
 
@@ -35,9 +35,8 @@ Tracker(
         int maxLevel = 4,
         bool useTDistWeights = true,
         int maxIterationsPerLevel = 20,
-        SolvingMethod solvingMethod = GAUSS_NEWTON,
-        ResidualWeight weightType = NONE,
-        bool useCUBLAS = true
+        SolvingMethod solvingMethod = GAUSS_NEWTON
+        // ResidualWeight weightType = NONE,
         ) :
         width(width),
         height(height),
@@ -49,18 +48,19 @@ Tracker(
         xi_total(Vector6f::Zero()),
         A(Matrix6f::Zero()),
         b(Vector6f::Zero()),
-        useCUBLAS(useCUBLAS),
-        useTDistWeights(useTDistWeights),
-        weightType(weightType)
+        useTDistWeights(useTDistWeights)
+        // weightType(weightType)
 {
-        if (useCUBLAS) {
-                stat = cublasCreate(&handle);
-                if (stat != CUBLAS_STATUS_SUCCESS) {
-                        printf ("\n\n!---------------cuBLAS initialization failed---------------!\n\n");
-                        //return EXIT_FAILURE;
-                }
-                else printf ("\n\n!--------------cuBLAS initialization succesful--------------!\n\n");
+
+
+#ifdef ENABLE_CUBLAS
+        stat = cublasCreate(&handle);
+        if (stat != CUBLAS_STATUS_SUCCESS) {
+                printf ("\n\n!---------------cuBLAS initialization failed---------------!\n\n");
+                //return EXIT_FAILURE;
         }
+        else printf ("\n\n!--------------cuBLAS initialization succesful--------------!\n\n");
+#endif
 
         // make pyramid vector large enough to hold all levels
         d_cur.resize(maxLevel+1);
@@ -87,7 +87,9 @@ Tracker(
  * destructor
  */
 ~Tracker() {
-        if (useCUBLAS) cublasDestroy(handle);
+#ifdef ENABLE_CUBLAS
+        cublasDestroy(handle);
+#endif
         deallocateGPUMemory();
 }
 
@@ -107,12 +109,11 @@ Vector6f align(float *grayCur, float *depthCur) {
 
         // from the highest level to the minimum level set
         for (int level = maxLevel; level >= minLevel; level--) {
-                std::cout << "Level: " << level << std::endl;
+                // std::cout << "Level: " << level << std::endl;
 
                 // calculate size of image in current level
                 int level_width = width / (1 << level); // calculating bitwise the succesive powers of 2
                 int level_height = height / (1 << level);
-                int n = level_width*level_height;
 
                 // set d_prev_err to big float number
                 float error_prev = BIG_FLOAT; // initialize as a great value to make sure loop continues for at least one iteration below
@@ -120,6 +121,7 @@ Vector6f align(float *grayCur, float *depthCur) {
                 bind_textures(level, level_width, level_height); // used for interpolation in the current image
 
                 // T distribution variance, (initial)
+                // declared even if not needed (no weights)
                 float variance = VARIANCE_INITIAL;
 
                 //cudaMemcpy(d_sigma, &SIGMA_INITIAL, sizeof(float), cudaMemcpyHostToDevice ); CUDA_CHECK;
@@ -142,65 +144,13 @@ Vector6f align(float *grayCur, float *depthCur) {
                         // parallel CUDA kernels: two streams
                                 // calculate_jacobian J(n,6)  // calculate_residuals r_xi(n,1) and error (mean squares of r_xi)
                                                               // calculate_weights W(n,1)
-                        calculate_residuals(level, level_width, level_height); //, stream2); // +3ms
-                        calculate_weights(level, level_width, level_height); //, stream2);   // +1ms
                         calculate_jacobian(level, level_width, level_height); //, stream1);  // +7ms
-                        get_error(level, level_width, level_height); //, stream2); // +6m      // cudamalloc is synchronous, so this does not work fine with parallel
-                        cudaDeviceSynchronize(); CUDA_CHECK; // needed here?
+                        calculate_residuals(level, level_width, level_height); //, stream2); // +3ms
+                        calculate_error(level, level_width, level_height); //, stream2); // +6m      // cudamalloc is synchronous, so this does not work fine with parallel?
 
-                        // JTW = J' * W, that is the transpose of the jacobian multiplied by the diagonal matrix W, storing weights calculated using the residuals
-                        if(useTDistWeights) {
-                            calculate_jtw(level, level_width, level_height, variance);
-                            std::cout << "We are using weights!!" << std::endl;
-                        }
-
-                        // Use nVidia's cuBLAS library for linear algebra calculations
-                        if(useCUBLAS) {
-
-                                // Matrix multiplication using cuBLAS looks like this:
-                                //      C = alpha * D * F + beta * C,    where C,D,F are matrices and alpha & beta are scalars
-                                //
-                                // For specifying whether or not the matrices D & F are transposed we use these constants:
-                                //      CUBLAS_OP_N => non-transpose,
-                                //      CUBLAS_OP_T => transpose,
-                                //      CUBLAS_OP_C => transpose conjugate
-
-                                float alpha = 1.f, beta = 0.f;
-
-                                // We want to calculate A = J' * W * J : (6x6) matrix
-                                //      W = IdentityMatrix => A = J' * J : (6x6) matrix
-                                //          using cuBLAS: A = alpha * J' * J + beta * A
-                                if(!useTDistWeights)
-                                        stat = cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 6, 6, n, &alpha, d_J, n, d_J, n, &beta, d_A, 6);
-                                else
-                                        stat = cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 6, 6, n, &alpha, d_JTW, n, d_J, n, &beta, d_A, 6);
-
-                                if (stat != CUBLAS_STATUS_SUCCESS) {
-                                        printf ("\n\n!----------cuBLAS matrix multiplication: A = J'*J FAILED!----------!\n\n");
-                                        // return EXIT_FAILURE;
-                                }
-                                else {
-                                        //printf ("\n\n!----------cuBLAS matrix multiplication: A = J'*J SUCCESSFUL!----------!\n\n");
-                                        cudaMemcpy(A.data(), d_A, 6*6*sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;
-                                }
-                                //std::cout << "Matrix A: \n" << A << std::endl;
-                                // We want to calculate b = J' * W * r : (6x1) vector
-                                //      W = IdentityMatrix => b = J' * r : (6x1) vector
-                                //          using cuBLAS: b = alpha * J' * r + beta * b
-                                if(!useTDistWeights)
-                                        stat = cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 6, 1, n, &alpha, d_J, n, d_r, n, &beta, d_b, 6);
-                                else
-                                        stat = cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 6, 1, n, &alpha, d_JTW, n, d_r, n, &beta, d_b, 6);
-
-                                if (stat != CUBLAS_STATUS_SUCCESS) {
-                                        printf ("\n\n!----------cuBLAS matrix multiplication: b = J'*r FAILED!----------!\n\n");
-                                        // return EXIT_FAILURE;
-                                }
-                                else {cudaMemcpy(b.data(), d_b, 6*sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;}
-
-                                // Calculate the error from the residuals. sum(errors) = r' * r
-                                cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 1, 1, n, &alpha, d_r, n, d_r, n, &beta, d_error, 1);
-                        }
+                        // variance is actually not used, but has to be passed by reference to keep
+                        // its value for next iteration, and referenced variables cannot get set to a default valu
+                        calculate_weights(level, level_width, level_height, variance); //, stream2);   // +1ms
 
                         // parallel CUDA kernels: two streams
                                 // calculate A(6,6) = J.T * W * J   // calculate B(6,1) = -J.T * W * r
@@ -209,7 +159,6 @@ Vector6f align(float *grayCur, float *depthCur) {
                         calculate_A ( level, level_width, level_height ); //, stream1 );
                         calculate_b ( level, level_width, level_height ); //, stream1 );
 
-// common code: both cuBLAS and not cuBLAS
                         // copy A and b to CPU memory
                         cudaMemcpy ( A.data(), d_A, 6*6*sizeof(float), cudaMemcpyDeviceToHost);
                         cudaMemcpy ( b.data(), d_b, 6*sizeof(float), cudaMemcpyDeviceToHost);
@@ -229,29 +178,32 @@ Vector6f align(float *grayCur, float *depthCur) {
 
                         error_prev = error;
 
+                        // DEBUG BLOCK
+                        {
                         // DEBUG --- PLOT RESIDUAL IMAGES
-                    //     if(level < 2){
-                    //         cv::Mat mTest(level_height, level_width, CV_32FC1);
-                    //         cv::Mat mTest2(level_height, level_width, CV_32FC1);
-                    //         float *prev = new float[level_width*level_height];
-                    //         cudaMemcpy(prev, d_r, level_width*level_height*sizeof(float), cudaMemcpyDeviceToHost);
-                    //         convert_layered_to_mat(mTest, prev);
-                    //         mTest2 = cv::abs(mTest);
-                    //         //cv::convertScaleAbs(mTest, mTest);
-                    //         showImage( "Residual at level: " + std::to_string(level) + ", iteration: " + std::to_string(i) , mTest2, 300, 100); cv::waitKey(0);
-                    //     /*    cudaMemcpy(prev, d_W, level_width*level_height*sizeof(float), cudaMemcpyDeviceToHost);
-                    //         convert_layered_to_mat(mTest, prev);
-                    //         double min, max;
-                    //         cv::minMaxLoc(mTest, &min, &max);
-                    //         showImage( "Weights at level: " + std::to_string(level) + ", iteration: " + std::to_string(i) , mTest/max, 300, 100); cv::waitKey(0);
-                    //     */
-                    //    }
+                        // if(level < 2){
+                        //     cv::Mat mTest(level_height, level_width, CV_32FC1);
+                        //     cv::Mat mTest2(level_height, level_width, CV_32FC1);
+                        //     float *prev = new float[level_width*level_height];
+                        //     cudaMemcpy(prev, d_r, level_width*level_height*sizeof(float), cudaMemcpyDeviceToHost);
+                        //     convert_layered_to_mat(mTest, prev);
+                        //     mTest2 = cv::abs(mTest);
+                        //     //cv::convertScaleAbs(mTest, mTest);
+                        //     showImage( "Residual at level: " + std::to_string(level) + ", iteration: " + std::to_string(i) , mTest2, 300, 100); cv::waitKey(0);
+                        // /*    cudaMemcpy(prev, d_W, level_width*level_height*sizeof(float), cudaMemcpyDeviceToHost);
+                        //     convert_layered_to_mat(mTest, prev);
+                        //     double min, max;
+                        //     cv::minMaxLoc(mTest, &min, &max);
+                        //     showImage( "Weights at level: " + std::to_string(level) + ", iteration: " + std::to_string(i) , mTest/max, 300, 100); cv::waitKey(0);
+                        // */
+                        // }
 
                         // // DEBUG display image
                         // cv::Mat mTest(level_height, level_width, CV_32FC1);
                         // float *res = new float[level_width*level_height];
                         // cudaMemcpy(res, d_r, level_width*level_height*sizeof(float), cudaMemcpyDeviceToHost);
                         // convert_layered_to_mat(mTest, res);
+                        // mTest = cv::abs(mTest);
                         // double min, max;
                         // cv::minMaxLoc(mTest, &min, &max);
                         // showImage( "Depth: " + std::to_string(level), mTest/max, 100, 100); cv::waitKey(0);
@@ -270,7 +222,7 @@ Vector6f align(float *grayCur, float *depthCur) {
                         //     std::cout << A << std::endl;
                         //     std::cout << b << std::endl;
                         // }
-
+                        }
                 }
 
                 unbind_textures();  // leave texture references free for binding at level below
@@ -297,18 +249,19 @@ int maxLevel;
 int minLevel;   // For speed. Used if the highest precision is not required
 int width;   // width of the first frame (and all frames)
 int height;   // height of the first frame (and all frames)
-ResidualWeight weightType;   // enum type of possible residual weighting. Defined in *_jacobian.cuh
-bool useCUBLAS;
+// ResidualWeight weightType;   // enum type of possible residual weighting. Defined in *_jacobian.cuh
 bool useTDistWeights;  // Whether or not weighting by student t-distribution should be used
 Matrix6f A; // A = J' * W * J
 Vector6f b; // b = J' * r
+float error;
 float SIGMA_INITIAL = 0.025f;
 float VARIANCE_INITIAL = 0.000625f;
 float BIG_FLOAT = std::numeric_limits<float>::max(); // TODO: can't this be *too* big?
-float error;
 
+// cuBLAS variables
 cublasHandle_t handle; // not used if useCUBLAS = false
 cublasStatus_t stat;
+const float alpha = 1.f, beta = 0.f;
 
 // device variables
 float *d_x_prime; // 3D x position in the second frame
@@ -339,7 +292,18 @@ Vector6f xi_delta;
 Vector6f xi;
 Vector6f xi_total;
 
+//______________________________________________________________________________
+//______________________________________________________________________________
 //_________________PRIVATE FUNCTIONS____________________________________________
+//______________________________________________________________________________
+//______________________________________________________________________________
+
+//_______________________________________________________
+//_______________________________________________________
+//________ PREPROCESSING
+//_______________________________________________________
+//_______________________________________________________
+
 void fill_K_levels(Eigen::Matrix3f K) {
         K_pyr[0] = K;
         K_inv_pyr[0] = invertKMat(K_pyr[0]);
@@ -414,30 +378,11 @@ void fill_pyramid(std::vector<PyramidLevel>& d_img, float *grayImg, float *depth
 
 }
 
-void define_texture_parameters() {
-        texRef_grayImg.normalized = false; CUDA_CHECK;
-        texRef_grayImg.filterMode = cudaFilterModeLinear; CUDA_CHECK;
-
-        texRef_gray_dx.normalized = false; CUDA_CHECK;
-        texRef_gray_dx.filterMode = cudaFilterModeLinear; CUDA_CHECK;
-
-        texRef_gray_dy.normalized = false; CUDA_CHECK;
-        texRef_gray_dy.filterMode = cudaFilterModeLinear; CUDA_CHECK;
-}
-
-void bind_textures(int level, int level_width, int level_height) {
-        cudaChannelFormatDesc desc = cudaCreateChannelDesc<float>(); // number of bits for each texture
-        int pitch = level_width * sizeof(float);
-        cudaBindTexture2D(NULL, &texRef_grayImg, d_cur[level].gray, &desc, level_width, level_height, pitch); CUDA_CHECK;
-        cudaBindTexture2D(NULL, &texRef_gray_dx, d_cur[level].gray_dx, &desc, level_width, level_height, pitch); CUDA_CHECK;
-        cudaBindTexture2D(NULL, &texRef_gray_dy, d_cur[level].gray_dy, &desc, level_width, level_height, pitch); CUDA_CHECK;
-}
-
-void unbind_textures() {
-        cudaUnbindTexture(texRef_grayImg); CUDA_CHECK;
-        cudaUnbindTexture(texRef_gray_dx); CUDA_CHECK;
-        cudaUnbindTexture(texRef_gray_dy); CUDA_CHECK;
-}
+//_______________________________________________________
+//_______________________________________________________
+//________ ALIGNMENT
+//_______________________________________________________
+//_______________________________________________________
 
 /**
  * Calculates the transformed positions on the second frame for every pixel in the first
@@ -495,7 +440,12 @@ void calculate_residuals(int level, int level_width, int level_height, cudaStrea
 /**
  * Calculates the error and compares with the previous one
  */
-void get_error(int level, int level_width, int level_height, cudaStream_t stream=0) {
+void calculate_error(int level, int level_width, int level_height, cudaStream_t stream=0) {
+#ifdef ENABLE_CUBLAS
+        int n = level_width*level_height;
+        // Calculate the error from the residuals. sum(errors) = r' * r
+        cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 1, 1, n, &alpha, d_r, n, d_r, n, &beta, d_error, 1);
+#else
         int size = level_width * level_height;
         // threads per block equals maximum possible
         int blocklength = 1024;
@@ -550,12 +500,17 @@ void get_error(int level, int level_width, int level_height, cudaStream_t stream
         // float test;
         // cudaMemcpy( &test, d_error, sizeof(float), cudaMemcpyDeviceToHost );
         // std::cout << "elegant: " << test << std::endl;
+#endif
 }
 
 /**
  * Calculates the weights
  */
-void calculate_weights(int level, int level_width, int level_height, cudaStream_t stream=0) {
+void calculate_weights( int level,
+                        int level_width,
+                        int level_height,
+                        float &variance_init,
+                        bool useTDist = false, cudaStream_t stream=0) {
         // Block = 2D array of threads
         dim3  dimBlock( g_CUDA_blockSize2DX, g_CUDA_blockSize2DY, 1 );
 
@@ -566,13 +521,151 @@ void calculate_weights(int level, int level_width, int level_height, cudaStream_
         int   gridSizeY = (level_height + dimBlock.y-1) / dimBlock.y;
         dim3  dimGrid( gridSizeX, gridSizeY, 1 );
 
-        d_set_uniform_weights <<< dimGrid, dimBlock, 0, stream >>> (d_W, level_width, level_height); //CUDA_CHECK;
+        if ( ! useTDist ) {    // use uniform weights
+                d_set_uniform_weights <<< dimGrid, dimBlock, 0, stream >>> (d_W, level_width, level_height); //CUDA_CHECK;
+        } else {    // use T-Distribution weights
+                int   n = level_width * level_height;
+
+                float variance = variance_init;
+                //float sigma = sigma_init;
+                int iterations = 0;
+                do {
+                      variance_init = variance;
+                      // here d_W is used just as an auxiliar variable
+                      // this returns the squared weighed residuals in d_W, which have to be reduced to get the variance
+                      d_calculate_tdist_variance <<< dimGrid, dimBlock >>> (d_W, d_r, level_width, level_height, variance_init); CUDA_CHECK;
+
+                      //compute new variance:
+#ifdef ENABLE_CUBLAS
+                      cublasSasum(handle, n , d_W, 1 , &variance);
+#else
+                      reduce_array_GPU( variance, d_W, n );
+#endif
+                      variance /= n;
+                      iterations ++;
+                } while( (std::abs( 1/(variance) -  1/(variance_init) ) > 1e-3)
+                      && (iterations < 5) );
+
+                variance_init = variance;
+                d_calculate_tdist_weights <<< dimGrid, dimBlock >>> (d_W, d_r, level_width, level_height, variance); CUDA_CHECK;
+
+                //cout << "Tdist estimate scale in  " << iterations << " iterations" << endl;
+
+        }
+}
+
+// calculate weights from current residuals and update d_jtw
+// only needed (for cuBLAS) if weights are used
+void calculate_jtw(int level, int level_width, int level_height) {
+        // calculate_weights( level, level_width, level_height, true );
+
+        int   lev_size = level_width * level_height;
+
+        dim3 dimBlockJ(g_CUDA_blockSize2DX, 6,1);
+        int gridSizeX = (lev_size + dimBlockJ.x-1) / dimBlockJ.x;
+        dim3 dimGridJ( gridSizeX, 1, 1 );
+
+        d_calculate_jtw <<<dimGridJ, dimBlockJ>>>(d_JTW, d_J, d_W, lev_size, 6); CUDA_CHECK;
+}
+
+void reduce_array_GPU ( float &out, float *d_arr, int size, cudaStream_t stream=0 ) {
+        // threads per block equals maximum possible
+        int blocklength = 1024;
+        // number of needed blocsk is ceil(l_w * l_h / blocklength)
+        int nblocks = (size + blocklength -1)/blocklength;
+
+        // alloc auxiliar array
+        float *d_aux = NULL;
+        cudaMalloc(&d_aux, nblocks*sizeof(float));// CUDA_CHECK;  // to avoid overwriting the residuals array
+        // alloc pointer for swapping
+        float *d_swap;
+
+        dim3 block = dim3(blocklength,1,1);
+        dim3 grid = dim3(nblocks, 1, 1 );
+
+        // first reduction. Return reduction by 1024 in aux
+        // d_sum (input, output, size)
+        d_sum <<< grid, block, blocklength*sizeof(float), stream >>> (d_arr, d_aux, size);// CUDA_CHECK;
+
+        // now aux is the input, and size is its size
+        size = nblocks;
+        // nblocks is the output of the next reduction
+        nblocks = (size + blocklength -1)/blocklength;
+        grid = dim3(nblocks, 1, 1 );
+
+        // alloc another auxiliar array
+        float *d_aux2 = NULL;
+        cudaMalloc(&d_aux2, nblocks*sizeof(float));// CUDA_CHECK;  // to avoid changing the pointer of the original array
+
+        // reductions until size 1
+        while (true) {
+                // d_sum (input, output, size)
+                d_sum <<< grid, block, blocklength*sizeof(float), stream >>> (d_aux, d_aux2, size);// CUDA_CHECK;
+                // if no more reductions are needed, break. Result is in d_aux2
+                if (nblocks == 1) break;
+
+                // // copy d_aux2 to the beginning of d_aux
+                // cudaMemcpy( d_aux, d_aux2, nblocks*sizeof(float), cudaMemcpyDeviceToDevice ); CUDA_CHECK;
+                // swap pointers of aux and aux2
+                d_swap = d_aux; d_aux = d_aux2; d_aux2 = d_swap;
+                // now aux2 is the input, copied into d_aux, and size is its size
+                size = nblocks;
+                // nblocks is the output of the next reduction
+                nblocks = (size + blocklength -1)/blocklength;
+                grid = dim3(nblocks, 1, 1 );
+        }
+
+        // d_check_error <<< dimGrid, dimBlock, 0, stream >>> (d_error, d_error_prev, d_error_ratio, d_r, level_width, level_height, level);
+        cudaMemcpy(&out, d_aux2, sizeof(float), cudaMemcpyDeviceToDevice); CUDA_CHECK;
+
+        cudaFree(d_aux); cudaFree(d_aux2);
+
+        // // DEBUG
+        // float test;
+        // cudaMemcpy( &test, d_error, sizeof(float), cudaMemcpyDeviceToHost );
+        // std::cout << "elegant: " << test << std::endl;
 }
 
 /**
  * Calculate matrix A of the linear system
  */
 void calculate_A (int level, int level_width, int level_height, cudaStream_t stream=0) {
+#ifdef ENABLE_CUBLAS
+        int n = level_width*level_height;
+
+        // Use nVidia's cuBLAS library for linear algebra calculations
+
+        // Matrix multiplication using cuBLAS looks like this:
+        //      C = alpha * D * F + beta * C,    where C,D,F are matrices and alpha & beta are scalars
+        //
+        // For specifying whether or not the matrices D & F are transposed we use these constants:
+        //      CUBLAS_OP_N => non-transpose,
+        //      CUBLAS_OP_T => transpose,
+        //      CUBLAS_OP_C => transpose conjugate
+
+        // We want to calculate A = J' * W * J : (6x6) matrix
+        //      W = IdentityMatrix => A = J' * J : (6x6) matrix
+        //          using cuBLAS: A = alpha * J' * J + beta * A
+        if(!useTDistWeights) {
+                stat = cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 6, 6, n, &alpha, d_J, n, d_J, n, &beta, d_A, 6);
+        } else {
+                // JTW = J' * W, that is the transpose of the jacobian multiplied by the diagonal matrix W, storing weights calculated using the residuals
+                calculate_jtw(level, level_width, level_height);
+                stat = cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 6, 6, n, &alpha, d_JTW, n, d_J, n, &beta, d_A, 6);
+                std::cout << "We are using weights!!" << std::endl;
+        }
+
+        if (stat != CUBLAS_STATUS_SUCCESS) {
+                printf ("\n\n!----------cuBLAS matrix multiplication: A = J'*J FAILED!----------!\n\n");
+                // return EXIT_FAILURE;
+        }
+        else {
+                //printf ("\n\n!----------cuBLAS matrix multiplication: A = J'*J SUCCESSFUL!----------!\n\n");
+                // cudaMemcpy(A.data(), d_A, 6*6*sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;
+                // TODO now done in the iteration loop
+        }
+        //std::cout << "Matrix A: \n" << A << std::endl;
+#else
         int size = level_width * level_height;
         // threads per block equals maximum possible
         int blocklength = 1024;
@@ -621,12 +714,43 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
         //         nblocks = (size + blocklength -1)/blocklength;
         //         grid = dim3(nblocks, 1, 1 );
         // }
+#endif
 }
 
 /**
  * Calculate array b of the linear system
  */
 void calculate_b (int level, int level_width, int level_height, cudaStream_t stream=0) {
+#ifdef ENABLE_CUBLAS
+        int n = level_width*level_height;
+
+        // Use nVidia's cuBLAS library for linear algebra calculations
+
+        // Matrix multiplication using cuBLAS looks like this:
+        //      C = alpha * D * F + beta * C,    where C,D,F are matrices and alpha & beta are scalars
+        //
+        // For specifying whether or not the matrices D & F are transposed we use these constants:
+        //      CUBLAS_OP_N => non-transpose,
+        //      CUBLAS_OP_T => transpose,
+        //      CUBLAS_OP_C => transpose conjugate
+
+        // We want to calculate b = J' * W * r : (6x1) vector
+        //      W = IdentityMatrix => b = J' * r : (6x1) vector
+        //          using cuBLAS: b = alpha * J' * r + beta * b
+        if(!useTDistWeights)
+                stat = cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 6, 1, n, &alpha, d_J, n, d_r, n, &beta, d_b, 6);
+        else
+                stat = cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 6, 1, n, &alpha, d_JTW, n, d_r, n, &beta, d_b, 6);
+
+        if (stat != CUBLAS_STATUS_SUCCESS) {
+                printf ("\n\n!----------cuBLAS matrix multiplication: b = J'*r FAILED!----------!\n\n");
+                // return EXIT_FAILURE;
+        }
+        else {
+                // cudaMemcpy(b.data(), d_b, 6*sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;
+                // TODO now done in the iteration loop
+        }
+#else
         int size = level_width * level_height;
         // threads per block equals maximum possible
         int blocklength = 1024;
@@ -675,47 +799,39 @@ void calculate_b (int level, int level_width, int level_height, cudaStream_t str
         //         nblocks = (size + blocklength -1)/blocklength;
         //         grid = dim3(nblocks, 1, 1 );
         // }
+#endif
 }
 
-// calculate weights from current residuals and update d_jtw
-void calculate_jtw(int level, int level_width, int level_height, float &variance_init) {
-          // Block = 2D array of threads
-          dim3  dimBlock( g_CUDA_blockSize2DX, g_CUDA_blockSize2DY, 1 );
+//_______________________________________________________
+//_______________________________________________________
+//__________ DEVICE MEMORY allocation & binding
+//_______________________________________________________
+//_______________________________________________________
 
-          // Grid = 2D array of blocks
-          int   gridSizeX = (level_width  + dimBlock.x-1) / dimBlock.x;
-          int   gridSizeY = (level_height + dimBlock.y-1) / dimBlock.y;
-          int   n = level_width * level_height;
-          dim3  dimGrid( gridSizeX, gridSizeY, 1 );
+void define_texture_parameters() {
+        texRef_grayImg.normalized = false; CUDA_CHECK;
+        texRef_grayImg.filterMode = cudaFilterModeLinear; CUDA_CHECK;
 
-          // updates the sigma and JTW
+        texRef_gray_dx.normalized = false; CUDA_CHECK;
+        texRef_gray_dx.filterMode = cudaFilterModeLinear; CUDA_CHECK;
 
-          float variance = variance_init;
-          //float sigma = sigma_init;
-          int iterations = 0;
-          do{
-                  variance_init = variance;
-                  d_calculate_variance <<< dimGrid, dimBlock >>> (d_W, d_r, level_width, level_height, variance_init); CUDA_CHECK;
-
-                  //compute new variance:
-                  cublasSasum(handle, n , d_W, 1 , &variance);
-                  variance /= n;
-                  iterations ++;
-          } while(std::abs( 1/(variance) -  1/(variance_init) ) > 1e-3 && iterations < 5);
-
-          variance_init = variance;
-          d_calculate_weights <<< dimGrid, dimBlock >>> (d_W, d_r, level_width, level_height, variance_init); CUDA_CHECK;
-
-
-          //cout << "Tdist estimate scale in  " << iterations << " iterations" << endl;
-
-          dim3 dimBlockJ(g_CUDA_blockSize2DX, 6,1);
-          gridSizeX = (n + dimBlock.x-1) / dimBlock.x;
-          dim3 dimGridJ( gridSizeX, 1, 1 );
-
-          d_calculate_jtw <<<dimGridJ, dimBlockJ>>>(d_JTW, d_J, d_W, n, 6); CUDA_CHECK;
+        texRef_gray_dy.normalized = false; CUDA_CHECK;
+        texRef_gray_dy.filterMode = cudaFilterModeLinear; CUDA_CHECK;
 }
 
+void bind_textures(int level, int level_width, int level_height) {
+        cudaChannelFormatDesc desc = cudaCreateChannelDesc<float>(); // number of bits for each texture
+        int pitch = level_width * sizeof(float);
+        cudaBindTexture2D(NULL, &texRef_grayImg, d_cur[level].gray, &desc, level_width, level_height, pitch); CUDA_CHECK;
+        cudaBindTexture2D(NULL, &texRef_gray_dx, d_cur[level].gray_dx, &desc, level_width, level_height, pitch); CUDA_CHECK;
+        cudaBindTexture2D(NULL, &texRef_gray_dy, d_cur[level].gray_dy, &desc, level_width, level_height, pitch); CUDA_CHECK;
+}
+
+void unbind_textures() {
+        cudaUnbindTexture(texRef_grayImg); CUDA_CHECK;
+        cudaUnbindTexture(texRef_gray_dx); CUDA_CHECK;
+        cudaUnbindTexture(texRef_gray_dy); CUDA_CHECK;
+}
 
 void allocateGPUMemory() {
         cudaMalloc(&d_J,      6*width*height*sizeof(float)); CUDA_CHECK;
@@ -748,10 +864,6 @@ void allocateGPUMemory() {
                 cudaMalloc(&d_prev[level].gray_dy, level_width*level_height*sizeof(float)); CUDA_CHECK;
         }
 
-        // Student-T weights allocation // TODO: shouldn't this be a pyramid? Or is it just allocated in excess for higher levels?
-        if (weightType == TDIST) {
-                // cudaMalloc(&d_tdistWeightedSqSum, width*height*sizeof(float)); CUDA_CHECK;
-        }
 }
 
 void deallocateGPUMemory() {
@@ -782,9 +894,6 @@ void deallocateGPUMemory() {
                 cudaFree(d_prev[level].gray_dy); CUDA_CHECK;
         }
 
-        if (weightType == TDIST) {
-                // cudaFree(d_tdistWeightedSqSum); CUDA_CHECK;
-        }
 
 }
 
