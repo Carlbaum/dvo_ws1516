@@ -33,12 +33,9 @@
 
 int main(int argc, char *argv[]) {
 
-    // cudaDeviceSynchronize();  CUDA_CHECK;
-    //
-    // // Get information about the GPU
-    // cudaGetDevice(&devID); CUDA_CHECK;
-    // cudaGetDeviceProperties(&props, devID); CUDA_CHECK;
-    // g_CUDA_maxSharedMemSize = props.sharedMemPerBlock;
+#ifdef ENABLE_CUBLAS
+    std::cout << "Using cuBLAS" << std::endl;
+#endif
 
     // Create streams
     // cudaStreamCreate ( &stream1 );
@@ -51,7 +48,7 @@ int main(int argc, char *argv[]) {
     // Path to data set
     // this program will use all the images described in the txt files
     // std::string path = "../data/rgbd_dataset_freiburg1_xyz";
-    std::string path = "../data/rgbd_dataset_freiburg1_desk";
+    std::string path = "../data/freiburg1_xyz_first_10";
     getParam("path", path, argc, argv);
     std::cout << "Path to dataset: " << path << std::endl;
 
@@ -62,18 +59,11 @@ int main(int argc, char *argv[]) {
     numberOfLevels = std::min(MAX_LEVELS, numberOfLevels); // 1/512 size reduction is in some cases already too large
     std::cout << "number of levels in pyramids: " << numberOfLevels << std::endl;
 
-    // gives the number of levels of the pyramids
+    // set to true to use Student-T weights
     bool tDistWeights = false;
     getParam("tDistWeights", tDistWeights, argc, argv);
     std::cout << "tDistWeights: " << tDistWeights << std::endl;
 
-    /* FROM THE EXERCISES, DON'T THINK WE NEED THIS
-        // input image
-        string image = "";
-        bool ret = getParam("i", image, argc, argv);
-        if (!ret) cerr << "ERROR: no image specified" << std::endl;
-        if (argc <= 1) { cout << "Usage: " << argv[0] << " -i <image> [-repeats <repeats>] [-gray]" << std::endl; return 1; }
-    */
     // ------- END OF PARAMETERS -------
 
 
@@ -105,9 +95,6 @@ int main(int argc, char *argv[]) {
     // initialize the tracker
     Tracker tracker(imgGray, imgDepth, w, h, K, 0, numberOfLevels-1,tDistWeights);
 
-    // TODO: WE NEED TO INITIALIZE THE IMAGES BEFORE THE MAIN LOOP
-
-
     // Store pose for frame 0
     poses.push_back(Matrix4f::Identity());
     timestamps.push_back(dataset.frames[0].timestamp);
@@ -126,7 +113,6 @@ int main(int argc, char *argv[]) {
         convert_mat_to_layered(imgGray, mGray);
         convert_mat_to_layered(imgDepth, mDepth);
 
-        // TODO: THIS IS WHERE WE SHOULD CALL THE ALIGN FUNCITON
         // std::cout << "Image number: " << i << std::endl;
         xi_current = tracker.align(imgGray, imgDepth);
 
@@ -135,6 +121,7 @@ int main(int argc, char *argv[]) {
         // std::cout << "Time of loading + doing calculations on image #" << i << ": " << t << " ms" << std::endl;
         // show input image
         // showImage("Input " + std::to_string(i), mGray, 100+20*i, 100+10*i);  // show at position (x_from_left=100,y_from_above=100)
+
         // Update and push absolute pose
         poses.push_back(lieExp(xi_current));
         timestamps.push_back(dataset.frames[i].timestamp);
@@ -146,10 +133,23 @@ int main(int argc, char *argv[]) {
                     << " ms.\nThis gives us an average of "
                         << total_time/dataset.frames.size()
                             << " ms per frame.\n" << std::endl;
-    savePoses( path + "our_trajectory.txt", poses, timestamps);
+
+    std::string options = "";
+    if (tDistWeights) {
+        options += "_tdist";
+    } else {
+        options += "_gdist";
+    }
+    #ifdef ENABLE_CUBLAS
+        options += "_cublas";
+    #else
+        options += "_nocublas";
+    #endif
+
+    savePoses( path +options+ "_trajectory.txt", poses, timestamps);
 
     cv::waitKey(0);
     cvDestroyAllWindows();
-    std::cout << "All done! Check out the output file: " << path << "our_trajectory.txt for the resulting trajectory!\n" << std::endl;
+    std::cout << "All done! Check out the output file: " << path << options << "_trajectory.txt for the resulting trajectory!\n" << std::endl;
     return 0;
 }
