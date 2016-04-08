@@ -65,7 +65,6 @@ Tracker(
         // Create additional streams
         for(int i = 0; i < NUM_STREAMS ; i++) {
             cudaStreamCreate ( &streams[i] );
-
         }
 
 
@@ -282,7 +281,7 @@ float BIG_FLOAT = std::numeric_limits<float>::max(); // TODO: can't this be *too
         cublasStatus_t stat;
 #endif
 const float alpha = 1.f, beta = 0.f;
-static const int NUM_STREAMS = 5;
+static const int NUM_STREAMS = 2;
 cudaStream_t streams[NUM_STREAMS];
 
 // device variables
@@ -364,12 +363,12 @@ void fill_pyramid(std::vector<PyramidLevel>& d_img, float *grayImg, float *depth
                 imresize_CUDA(d_img[level-1].gray, d_img[level].gray, 2*level_width, 2*level_height, level_width, level_height, 1, false/*,streams[0]*/); CUDA_CHECK;
                 imresize_CUDA(d_img[level-1].depth, d_img[level].depth, 2*level_width, 2*level_height, level_width, level_height, 1, true/*,streams[1]*/); CUDA_CHECK; // TODO: Check properly if isDepthImage is working. Looks like it does
         }
-        //cudaDeviceSynchronize(); // TODO: 2 instances of imresize can't be run in parallel atm, because of some cudaMalloc & cudaFree in that scope
+        cudaDeviceSynchronize(); // TODO: 2 instances of imresize can't be run in parallel atm, because of some cudaMalloc & cudaFree in that scope
         for (int level = 0; level <= maxLevel; level++) {
                 level_width = width / (1 << level); // bitwise operator to divide by 2**level
                 level_height = height / (1 << level);
                 // compute derivatives!!
-                image_derivatives_CUDA(d_img[level].gray,d_img[level].gray_dx,d_img[level].gray_dy,level_width,level_height,streams[level]); CUDA_CHECK;
+                image_derivatives_CUDA(d_img[level].gray,d_img[level].gray_dx,d_img[level].gray_dy,level_width,level_height,streams[level%2]); CUDA_CHECK;
         }
         // //Debug
         // for (int level = 0; level < maxLevel; level++) {

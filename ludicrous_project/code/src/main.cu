@@ -12,7 +12,7 @@
 
 // TODO: is this the proper way of using global variables inside the tracker class?
     // global variables
-    const int MAX_LEVELS = 5;
+    const int MAX_LEVELS = 7;
         // CUDA related
     int             devID;
     cudaDeviceProp  props;
@@ -41,12 +41,6 @@ int main(int argc, char *argv[]) {
     std::cout << "Using cuBLAS" << std::endl;
 #endif
 
-    // Create streams
-    // cudaStreamCreate ( &stream1 );
-    // cudaStreamCreate ( &stream2 );
-
-
-
     // ---------- PARAMETERS ----------
 
     // Path to data set
@@ -56,12 +50,11 @@ int main(int argc, char *argv[]) {
     getParam("path", path, argc, argv);
     std::cout << "Path to dataset: " << path << std::endl;
 
-    // gives the number of levels of the pyramids
+    // gives the number of levels of the pyramids,
     int numberOfLevels = 5;
     getParam("numberOfLevels", numberOfLevels, argc, argv);
     numberOfLevels = std::max(1, numberOfLevels);
     numberOfLevels = std::min(MAX_LEVELS, numberOfLevels); // 1/512 size reduction is in some cases already too large
-    std::cout << "number of levels in pyramids: " << numberOfLevels << std::endl;
 
     // set to true to use Student-T weights
     bool tDistWeights = false;
@@ -87,6 +80,23 @@ int main(int argc, char *argv[]) {
     // get image dimensions
     int w = mGray.cols;
     int h = mGray.rows;
+
+    // Determine number of downscaling levels based on the size of input images
+    // Compute the number of scale levels, based on the image size, the
+    // pyramid scale factor and the minimum image size at the coarsest level
+    const int MIN_IMAGE_SIZE = 32;
+    int m_downscaleFactor = 2;
+    int m_nLevels = 1;
+    int     w_tmp = w;
+    int     h_tmp = h;
+    while( w_tmp/m_downscaleFactor >= MIN_IMAGE_SIZE
+           && h_tmp/m_downscaleFactor >= MIN_IMAGE_SIZE ) {
+        w_tmp = (int) (w_tmp / m_downscaleFactor);
+        h_tmp = (int) (h_tmp / m_downscaleFactor);
+        m_nLevels++;
+    }
+    numberOfLevels = std::max(1, std::min(m_nLevels, numberOfLevels));
+    std::cout << "number of levels in pyramids: " << numberOfLevels << std::endl;
 
     // allocate raw input intensity and depth arrays
     float *imgGray = new float[(size_t)w*h];
