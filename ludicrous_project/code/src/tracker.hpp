@@ -163,7 +163,7 @@ Vector6f align(float *grayCur, float *depthCur) {
 
                         // variance is actually not used, but has to be passed by reference to keep
                         // its value for next iteration, and referenced variables cannot get set to a default valu
-                        calculate_weights(level, level_width, level_height, variance); //, stream2);   // +1ms
+                        calculate_weights(level, level_width, level_height, variance, useTDistWeights); //, stream2);   // +1ms
 
                         // parallel CUDA kernels: two streams
                                 // calculate A(6,6) = J.T * W * J   // calculate B(6,1) = -J.T * W * r
@@ -527,7 +527,8 @@ void calculate_weights( int level,
                         int level_width,
                         int level_height,
                         float &variance_init,
-                        bool useTDist = false, cudaStream_t stream=0) {
+                        bool useTDist,
+                        cudaStream_t stream=0) {
         // Block = 2D array of threads
         dim3  dimBlock( g_CUDA_blockSize2DX, g_CUDA_blockSize2DY, 1 );
 
@@ -556,7 +557,7 @@ void calculate_weights( int level,
 #ifdef ENABLE_CUBLAS
                       cublasSasum(handle, n , d_W, 1 , &variance);
 #else
-                      reduce_array_GPU( variance, d_W, n );
+                      reduce_array_GPU( &variance, d_W, n );
 #endif
                       variance /= n;
                       iterations ++;
@@ -586,7 +587,7 @@ void calculate_jtw(int level, int level_width, int level_height) {
         cudaDeviceSynchronize(); // d_JTW must be done before any other calculations on GPU
 }
 
-void reduce_array_GPU ( float &out, float *d_arr, int size, cudaStream_t stream=0 ) {
+void reduce_array_GPU ( float *p_out, float *d_arr, int size, cudaStream_t stream=0 ) {
         // threads per block equals maximum possible
         int blocklength = 1024;
         // number of needed blocsk is ceil(l_w * l_h / blocklength)
@@ -634,7 +635,7 @@ void reduce_array_GPU ( float &out, float *d_arr, int size, cudaStream_t stream=
         }
 
         // d_check_error <<< dimGrid, dimBlock, 0, stream >>> (d_error, d_error_prev, d_error_ratio, d_r, level_width, level_height, level);
-        cudaMemcpy(&out, d_aux2, sizeof(float), cudaMemcpyDeviceToDevice); CUDA_CHECK;
+        cudaMemcpy( p_out, d_aux2, sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;
 
         cudaFree(d_aux); cudaFree(d_aux2);
 
