@@ -222,7 +222,7 @@ Vector6f align(float *grayCur, float *depthCur) {
                         // mTest = cv::abs(mTest);
                         // double min, max;
                         // cv::minMaxLoc(mTest, &min, &max);
-                        // showImage( "Depth: " + std::to_string(level), mTest/max, 100, 100); cv::waitKey(0);
+                        // showImage( "Depth: " + std::to_string(level), mTest, 100, 100); cv::waitKey(0);
                         // // DEBUG print out values
                         // if (i==0) {
                         //     // dim3  dimBlock( g_CUDA_blockSize2DX, g_CUDA_blockSize2DY, 1 );
@@ -703,12 +703,10 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
             // total
         int gridVolume = numblocksX*numblocksY*numblocksZ;
 
-        if (numblocksZ > 1024) std::cout << "Warning: calculate_A reduction is not ready for this image size" << std::endl;
-        // std::cout << size << " " << blocklength << " " << numblocksX << " " << numblocksY << " " << numblocksZ << " " << gridVolume << std::endl;
-
         // alloc auxiliar array for all the matrix sub-products forming the 3D "volume" (stored in an array) previous to computing A
         float *d_pre_A = NULL;
         cudaMalloc(&d_pre_A, gridVolume*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
+        float *d_swap;
 
         dim3 block = dim3(blocklength,1,1);
         dim3 grid = dim3( numblocksX, numblocksY, numblocksZ );
@@ -717,12 +715,35 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
         cudaDeviceSynchronize(); //Both streams[0] and streams[1] must be 0 before next call
         d_product_JacT_W_Jac <<< grid, block, blocklength*sizeof(float), streams[1] >>> (d_pre_A, d_J, d_W, size); CUDA_CHECK;
 
-        // now aux is the input, and size is its size
+        // now d_pre_A is the input, and size is its size per column to be reduced
         size = numblocksZ;
-        // d_A is the output of the next reduction, is 6x6
-        grid = dim3( numblocksX, numblocksY, 1 );
+        // numblocksZ is now the size after the next reduction
+        numblocksZ = (size + blocklength -1)/blocklength;
 
-        d_reduce_pre_A_to_A <<< grid, block, blocklength*sizeof(float), streams[1] >>> (d_A, d_pre_A, size); CUDA_CHECK;
+        // another auxiliar array is needed for storing intermediate results.
+        // This allocates the space needed for the first iteration. There will be
+        // storage in excess for the rest of needed iterations
+        float *d_pre_A_aux = NULL;
+        cudaMalloc(&d_pre_A_aux, numblocksX*numblocksY*numblocksZ*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
+
+        while (true) {
+                // d_A is the output of the next reduction, is 6x6xnumblocksZ
+                grid = dim3( numblocksX, numblocksY, numblocksZ );
+
+                // if this is the last iteration, write to A
+                if (numblocksZ == 1) d_pre_A_aux = d_A;
+                d_reduce_pre_M_towards_M <<< grid, block, blocklength*sizeof(float), streams[1] >>> (d_pre_A_aux, d_pre_A, size); CUDA_CHECK;
+                // if reduction is complete, break
+                if (numblocksZ == 1) break;
+
+                // swap pre_A and pre_A_aux pointers to change input and output for next iteration
+                d_swap = d_pre_A; d_pre_A = d_pre_A_aux; d_pre_A_aux = d_swap;
+
+                // now d_pre_A has the size d_pre_A_aux had in the previous iteration
+                size = numblocksZ;
+                // numblocksZ will be the size after the next reduction
+                numblocksZ = (size + blocklength -1)/blocklength;
+        }
 
         // reductions until size 1 // not implemented, required for larger images TODO
         // while (true) {
@@ -744,7 +765,8 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
 }
 
 /**
- * Calculate array b of the linear system
+ * Calculate array b of the linear system.
+ * TODO: The non cublas version is exactly? duplicated from calculate_A??
  */
 void calculate_b (int level, int level_width, int level_height, cudaStream_t stream=0) {
 #ifdef ENABLE_CUBLAS
@@ -789,12 +811,10 @@ void calculate_b (int level, int level_width, int level_height, cudaStream_t str
             // total
         int gridVolume = numblocksX*numblocksY*numblocksZ;
 
-        if (numblocksZ > 1024) std::cout << "Warning: calculate_A reduction is not ready for this image size" << std::endl;
-        // std::cout << size << " " << blocklength << " " << numblocksX << " " << numblocksY << " " << numblocksZ << " " << gridVolume << std::endl;
-
         // alloc auxiliar array for all the matrix sub-products forming the 3D "volume" (stored in an array) previous to computing A
         float *d_pre_b = NULL;
         cudaMalloc(&d_pre_b, gridVolume*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
+        float *d_swap;
 
         dim3 block = dim3(blocklength,1,1);
         dim3 grid = dim3( numblocksX, numblocksY, numblocksZ );
@@ -804,10 +824,33 @@ void calculate_b (int level, int level_width, int level_height, cudaStream_t str
 
         // now aux is the input, and size is its size
         size = numblocksZ;
-        // d_b is the output of the next reduction, is 6x1
-        grid = dim3( numblocksX, numblocksY, 1 );   // actually (numblocksX, 1, 1)
+        // numblocksZ is now the size after the next reduction
+        numblocksZ = (size + blocklength -1)/blocklength;
 
-        d_reduce_pre_b_to_b <<< grid, block, blocklength*sizeof(float), streams[0] >>> (d_b, d_pre_b, size); CUDA_CHECK;
+        // another auxiliar array is needed for storing intermediate results.
+        // This allocates the space needed for the first iteration. There will be
+        // storage in excess for the rest of needed iterations
+        float *d_pre_b_aux = NULL;
+        cudaMalloc(&d_pre_b_aux, numblocksX*numblocksY*numblocksZ*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
+
+        while (true) {
+                // d_A is the output of the next reduction, is 6x6xnumblocksZ
+                grid = dim3( numblocksX, numblocksY, numblocksZ );
+
+                // if this is the last iteration, write to A
+                if (numblocksZ == 1) d_pre_b_aux = d_b;
+                d_reduce_pre_M_towards_M <<< grid, block, blocklength*sizeof(float), streams[1] >>> (d_pre_b_aux, d_pre_b, size); CUDA_CHECK;
+                // if reduction is complete, break
+                if (numblocksZ == 1) break;
+
+                // swap pre_A and pre_A_aux pointers to change input and output for next iteration
+                d_swap = d_pre_b; d_pre_b = d_pre_b_aux; d_pre_b_aux = d_swap;
+
+                // now d_pre_A has the size d_pre_A_aux had in the previous iteration
+                size = numblocksZ;
+                // numblocksZ will be the size after the next reduction
+                numblocksZ = (size + blocklength -1)/blocklength;
+        }
 
         // reductions until size 1 // not implemented, required for larger images TODO
         // while (true) {
