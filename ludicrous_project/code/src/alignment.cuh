@@ -372,22 +372,28 @@ __global__ void d_product_JacT_W_Jac(   float *pre_A,
 }
 
 /**
- * Calculates the A matrix
- * @param *A        output A matrix, stored column-wise
- * @param *pre_A    input previous to A, result of d_product_JacT_W_Jac
+ * Reduces by a 1024 factor a matrix or an array from their pre-computed forms.
+ * This is applied after d_product_JacT_W_Jac or d_product_JacT_W_res as many
+ * times as needed to complete the matrix multiplication. The goal is to get M.
+ * @param *M        output pre_M_reduced matrix, stored column-wise. If blockDim.z==1, the output will be the final result.
+ * @param *pre_A    input to be reduced. It is the result of d_product_JacT_W_Jac or JacT_W_res.
  * @param *sizeZ    number of pre_A floats to be reduced to get each element of A. It is the Z component of the 3D matrix pre_A (stored as a linear array)
  */
-__global__ void d_reduce_pre_A_to_A(    float *A,
-                                        float *pre_A,
-                                        int sizeZ ) {
+__global__ void d_reduce_pre_M_towards_M(   float *pre_M_reduced,
+                                            float *pre_M,
+                                            int sizeZ ) {
         extern __shared__ float sdata[];
-        // blockIdx.x is the row of A
-        // blockIdx.y is the column of A
-        int idx = threadIdx.x + (blockIdx.x + blockIdx.y * 6) * sizeZ;    // position along pre_A of thread pixel to load in memory
+        // blockIdx.x is the row of M
+        // blockIdx.y is the column of M
+
+        // position along pre_M of thread pixel to load in memory
+        int idx = threadIdx.x   // index along each 1024 array to reduce
+                  + blockIdx.z * blockDim.z // starting position within each set of 1024 arrays
+                  + (blockIdx.x + blockIdx.y * 6) * sizeZ;  // starting position of each set of 1024 arrays. Each set corresponds to a position in M
         int tx = threadIdx.x;
         // load input into __shared__ memory
         if (tx < sizeZ) {
-                sdata[tx] = pre_A[idx];
+                sdata[tx] = pre_M[idx];
                 __syncthreads();
         } else {
                 sdata[tx] = 0;
@@ -406,7 +412,10 @@ __global__ void d_reduce_pre_A_to_A(    float *A,
                 if(threadIdx.x == 0) {
                         // note that the result is per-block
                         // not per-thread
-                        A[ blockIdx.x + blockIdx.y * 6 ] = sdata[0];
+                        pre_M_reduced[ (blockIdx.x + blockIdx.y * 6)    // column-wise position in M
+                                            * gridDim.z     // number of elements per M position
+                                        + blockIdx.z    // element number for every M position
+                                     ] = sdata[0];
                 }
         }
 }
@@ -459,46 +468,6 @@ __global__ void d_product_JacT_W_res(   float *pre_b,
                         pre_b[ subBlockIdx     // index along the dimension of pre_b to be later reduced to get b
                                 + row * gridDim.z    // row of b times the size of each array to be reduced to get each b element. These arrays are stored head to tail along pre_b
                              ] = sdata[0];
-                }
-        }
-}
-
-/**
- * Calculates the b array
- * @param *b        output b array
- * @param *pre_b    input previous to b, result of d_product_JacT_W_res
- * @param *sizeZ    number of pre_b floats to be reduced to get each element of b. It is the Z component of the 3D matrix (actually 2D because blockDim.y=1) pre_b (stored as a linear array)
- */
-__global__ void d_reduce_pre_b_to_b(    float *b,
-                                        float *pre_b,
-                                        int sizeZ ) {
-        extern __shared__ float sdata[];
-        // blockIdx.x is the row of A
-        // blockIdx.y is the column of A
-        int idx = threadIdx.x + blockIdx.x * sizeZ;    // position along pre_b of thread pixel to load in memory
-        int tx = threadIdx.x;
-        // load input into __shared__ memory
-        if (tx < sizeZ) {
-                sdata[tx] = pre_b[idx];
-                __syncthreads();
-        } else {
-                sdata[tx] = 0;
-                __syncthreads();
-        }
-        if (tx < sizeZ) {
-                // block-wide reduction in __shared__ mem
-                for(int offset = blockDim.x / 2; offset > 0; offset /= 2) {
-                        if(tx < offset) {
-                                // add a partial sum upstream to our own
-                                sdata[tx] += sdata[tx + offset];
-                        }
-                        __syncthreads();
-                }
-                // finally, thread 0 writes the result
-                if(threadIdx.x == 0) {
-                        // note that the result is per-block
-                        // not per-thread
-                        b[ blockIdx.x ] = sdata[0];
                 }
         }
 }
