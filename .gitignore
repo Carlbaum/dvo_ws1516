@@ -1,6 +1,7 @@
 /build/
+ludicrous_project/code/data/rgbd*
 
-ludicrous
+ludicrous_project/code/src/ludicrous*
 
 __MACOSX
 .DS_Store

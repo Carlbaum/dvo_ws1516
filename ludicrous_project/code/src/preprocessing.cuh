@@ -258,8 +258,8 @@ void  gaussFilter2D_CUDA( const float   *img_src,
                           int           channels,
                           float         sigma,
                           int           radius,
-                          int           borderMethod,
-                          cudaStream_t  &stream )
+                          int           borderMethod/*,
+                          cudaStream_t  &stream */)
 {
   // Reserve shared memory for the block + "radius" padding pixels at each border
   // Last term is some extra buffer (function parameters, template arguments, ..)
@@ -292,7 +292,7 @@ void  gaussFilter2D_CUDA( const float   *img_src,
 
   // Allocate intermediate storage
   float   *d_tmp;
-   cudaMalloc((void**) &d_tmp, width*height*sizeof(float) ); CUDA_CHECK;
+   cudaMalloc((void**) &d_tmp, width*height*sizeof(float) ); CUDA_CHECK; // TODO: this prevents several streams to be executed concurrently
 
 
   // And finally apply the 2D Gaussian convolution on all image channels
@@ -300,22 +300,22 @@ void  gaussFilter2D_CUDA( const float   *img_src,
   {
     int   offset = width * height * ch;
 
-    gaussFilter2D_horizontal_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize, stream >>>(
+    gaussFilter2D_horizontal_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize/*, stream*/ >>>(
                              &img_src[offset], d_tmp,
                              width, height, sigma, radius, borderMethod );
     // cudaDeviceSynchronize(); // TODO: for us to be able to down scale gray and intensity images in parallel, this should probably be a cudaStreamSynchronize
-    cudaStreamSynchronize(stream);
+    //cudaStreamSynchronize(stream);
 
-    gaussFilter2D_vertical_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize, stream >>>(
+    gaussFilter2D_vertical_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize/*, stream*/ >>>(
                              d_tmp, &img_dst[offset],
                              width, height, sigma, radius, borderMethod );
     // cudaDeviceSynchronize(); // TODO: should also be cudaStreamSynchronize
-    cudaStreamSynchronize(stream);
+    //cudaStreamSynchronize(stream);
   }
   // CHECK_FOR_CUDA_ERRORS( "gaussFilter2D_CUDA" );
 
   // Cleanup intermediate storage
-   cudaFree( d_tmp ); CUDA_CHECK;
+   cudaFree( d_tmp ); CUDA_CHECK; // TODO: this prevents several streams to be executed concurrently
 }
 
 
@@ -441,8 +441,8 @@ void  imresize_CUDA( const float   *pImgSrc,
                      int           dst_width,
                      int           dst_height,
                      int           channels ,
-                     bool          isDepthImage,
-                     cudaStream_t  &stream)
+                     bool          isDepthImage/*,
+                     cudaStream_t  &stream*/)
 {
   //DEBUG
   //printf( "imgSrc: %dx%dx%d -> imgDst: %dx%dx%d\n",
@@ -514,9 +514,9 @@ void  imresize_CUDA( const float   *pImgSrc,
 
     // Run Gauss filtering
     gaussFilter2D_CUDA( pImgSrc, I_gauss, src_width, src_height, channels,
-                        sigma, radius, BORDER_REPLICATE, stream );
+                        sigma, radius, BORDER_REPLICATE/*, stream*/ );
     //cudaDeviceSynchronize();
-    cudaStreamSynchronize(stream);
+    //cudaStreamSynchronize(stream);
 
     //DEBUG
     //Image<float> *pImg_f = copyImageDeviceToHost<float,float>( I_gauss );
@@ -524,18 +524,18 @@ void  imresize_CUDA( const float   *pImgSrc,
 
 
     // Run bilinear image scaling
-    scaleImage_CUDA_kernel<float><<< dimGrid, dimBlock, 0, stream >>>(
+    scaleImage_CUDA_kernel<float><<< dimGrid, dimBlock, 0/*, stream*/ >>>(
                                I_gauss, pImgDst,
                                src_width, src_height,
                                dst_width, dst_height,
                                channels, fUsePixCenter );
 
-  cudaFree(I_gauss); CUDA_CHECK;
+   cudaFree(I_gauss); CUDA_CHECK;
   }//if Gauss filter
   else
   {
     // Run bilinear image scaling
-    scaleImage_CUDA_kernel<float><<< dimGrid, dimBlock, 0 , stream >>>(
+    scaleImage_CUDA_kernel<float><<< dimGrid, dimBlock, 0 /*, stream*/ >>>(
                                  pImgSrc, pImgDst,
                                  src_width, src_height,
                                  dst_width, dst_height,

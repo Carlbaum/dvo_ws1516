@@ -32,6 +32,10 @@
 #include "tracker.hpp"
 
 int main(int argc, char *argv[]) {
+    std::cout << std::endl
+              << "*******************************************************\n"
+              << "*********DENSE VISUAL ODOMETRY PROGRAM STARTED*********\n"
+              << "*******************************************************\n" << std::endl;
 
 #ifdef ENABLE_CUBLAS
     std::cout << "Using cuBLAS" << std::endl;
