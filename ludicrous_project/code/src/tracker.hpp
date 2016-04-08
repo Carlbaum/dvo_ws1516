@@ -350,15 +350,15 @@ void fill_pyramid(std::vector<PyramidLevel>& d_img, float *grayImg, float *depth
         // copy image into the basis of the pyramid
         cudaMemcpy(d_img[0].gray, grayImg, width*height*sizeof(float), cudaMemcpyHostToDevice); CUDA_CHECK;
         cudaMemcpy(d_img[0].depth, depthImg, width*height*sizeof(float), cudaMemcpyHostToDevice); CUDA_CHECK;
-
+        cudaDeviceSynchronize();
         int level_width, level_height; // width and height of downsampled images
         for (int level = 1; level <= maxLevel; level++) {
                 level_width = width / (1 << level); // bitwise operator to divide by 2**level
                 level_height = height / (1 << level);
-                imresize_CUDA(d_img[level-1].gray, d_img[level].gray, 2*level_width, 2*level_height, level_width, level_height, 1, false); CUDA_CHECK;
-                imresize_CUDA(d_img[level-1].depth, d_img[level].depth, 2*level_width, 2*level_height, level_width, level_height, 1, true); CUDA_CHECK; // TODO: Check properly if isDepthImage is working. Looks like it does
+                imresize_CUDA(d_img[level-1].gray, d_img[level].gray, 2*level_width, 2*level_height, level_width, level_height, 1, false,streams[0]); CUDA_CHECK;
+                imresize_CUDA(d_img[level-1].depth, d_img[level].depth, 2*level_width, 2*level_height, level_width, level_height, 1, true,streams[1]); CUDA_CHECK; // TODO: Check properly if isDepthImage is working. Looks like it does
         }
-
+        cudaDeviceSynchronize();
         for (int level = 0; level <= maxLevel; level++) {
                 level_width = width / (1 << level); // bitwise operator to divide by 2**level
                 level_height = height / (1 << level);

@@ -258,7 +258,8 @@ void  gaussFilter2D_CUDA( const float   *img_src,
                           int           channels,
                           float         sigma,
                           int           radius,
-                          int           borderMethod )
+                          int           borderMethod,
+                          cudaStream_t  &stream )
 {
   // Reserve shared memory for the block + "radius" padding pixels at each border
   // Last term is some extra buffer (function parameters, template arguments, ..)
@@ -299,15 +300,17 @@ void  gaussFilter2D_CUDA( const float   *img_src,
   {
     int   offset = width * height * ch;
 
-    gaussFilter2D_horizontal_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize >>>(
+    gaussFilter2D_horizontal_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize, stream >>>(
                              &img_src[offset], d_tmp,
                              width, height, sigma, radius, borderMethod );
-    cudaDeviceSynchronize();
+    // cudaDeviceSynchronize(); // TODO: for us to be able to down scale gray and intensity images in parallel, this should probably be a cudaStreamSynchronize
+    cudaStreamSynchronize(stream);
 
-    gaussFilter2D_vertical_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize >>>(
+    gaussFilter2D_vertical_CUDA_kernel<<< dimGrid, dimBlock, sharedMemSize, stream >>>(
                              d_tmp, &img_dst[offset],
                              width, height, sigma, radius, borderMethod );
-    cudaDeviceSynchronize();
+    // cudaDeviceSynchronize(); // TODO: should also be cudaStreamSynchronize
+    cudaStreamSynchronize(stream);
   }
   // CHECK_FOR_CUDA_ERRORS( "gaussFilter2D_CUDA" );
 
@@ -438,7 +441,8 @@ void  imresize_CUDA( const float   *pImgSrc,
                      int           dst_width,
                      int           dst_height,
                      int           channels ,
-                     bool          isDepthImage)
+                     bool          isDepthImage,
+                     cudaStream_t  &stream)
 {
   //DEBUG
   //printf( "imgSrc: %dx%dx%d -> imgDst: %dx%dx%d\n",
@@ -510,9 +514,9 @@ void  imresize_CUDA( const float   *pImgSrc,
 
     // Run Gauss filtering
     gaussFilter2D_CUDA( pImgSrc, I_gauss, src_width, src_height, channels,
-                        sigma, radius, BORDER_REPLICATE );
-    cudaDeviceSynchronize();
-
+                        sigma, radius, BORDER_REPLICATE, stream );
+    //cudaDeviceSynchronize();
+    cudaStreamSynchronize(stream);
 
     //DEBUG
     //Image<float> *pImg_f = copyImageDeviceToHost<float,float>( I_gauss );
@@ -520,7 +524,7 @@ void  imresize_CUDA( const float   *pImgSrc,
 
 
     // Run bilinear image scaling
-    scaleImage_CUDA_kernel<float><<< dimGrid, dimBlock >>>(
+    scaleImage_CUDA_kernel<float><<< dimGrid, dimBlock, 0, stream >>>(
                                I_gauss, pImgDst,
                                src_width, src_height,
                                dst_width, dst_height,
@@ -531,14 +535,15 @@ void  imresize_CUDA( const float   *pImgSrc,
   else
   {
     // Run bilinear image scaling
-    scaleImage_CUDA_kernel<float><<< dimGrid, dimBlock >>>(
+    scaleImage_CUDA_kernel<float><<< dimGrid, dimBlock, 0 , stream >>>(
                                  pImgSrc, pImgDst,
                                  src_width, src_height,
                                  dst_width, dst_height,
                                  channels, fUsePixCenter , isDepthImage );
   }//if no Gauss filter
 
-  cudaDeviceSynchronize();
+  // cudaDeviceSynchronize();
+  //cudaStreamSynchronize(stream); // TODO: should this be here or not?
 }
 
 /**
