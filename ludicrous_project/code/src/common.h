@@ -15,6 +15,7 @@ typedef Matrix<float,6,6> Matrix6f;
 
 // global variables
 const int MAX_LEVELS = 7;   // TODO: potential bug for more levels
+
 // CUDA related
 int devID;
 cudaDeviceProp props;

@@ -472,7 +472,7 @@ void calculate_residuals(int level, int level_width, int level_height, cudaStrea
 }
 
 /**
- * Calculates the error and compares with the previous one
+ * Calculates the error
  */
 void calculate_error(int level, int level_width, int level_height, cudaStream_t stream=0) {
 #ifdef ENABLE_CUBLAS
@@ -591,7 +591,7 @@ void calculate_weights( int level,
 }
 
 // calculate weights from current residuals and update d_jtw
-// only needed (for cuBLAS) if weights are used
+// only used with cuBLAS and only if weights are used
 void calculate_jtw(int level, int level_width, int level_height) {
         // calculate_weights( level, level_width, level_height, true );
 
@@ -605,6 +605,13 @@ void calculate_jtw(int level, int level_width, int level_height) {
         cudaDeviceSynchronize(); // d_JTW must be done before any other calculations on GPU
 }
 
+/**
+ * Reduce an array.
+ * @param p_out  Output. Pointer to a single float in CPU memory.
+ * @param d_arr  Input. Pointer to an array of size size in device memory.
+ * @param size   Size of d_arr.
+ * @param stream CUDA stream to run this if provided.
+ */
 void reduce_array_GPU ( float *p_out, float *d_arr, int size, cudaStream_t stream=0 ) {
         // threads per block equals maximum possible
         int blocklength = 1024;
@@ -758,28 +765,17 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
                 numblocksZ = (size + blocklength -1)/blocklength;
         }
 
-        // reductions until size 1 // not implemented, required for larger images TODO
-        // while (true) {
-        //         d_sum <<< grid, block, blocklength*sizeof(float), stream >>> (d_aux, d_aux2, size); CUDA_CHECK;
-        //         // if no more reductions are needed, break. Result is in d_aux2
-        //         if (nblocks == 1) break;
-        //
-        //         // // copy d_aux2 to the beginning of d_aux
-        //         // cudaMemcpy( d_aux, d_aux2, nblocks*sizeof(float), cudaMemcpyDeviceToDevice ); CUDA_CHECK;
-        //         // swap pointers of aux and aux2
-        //         d_swap = d_aux; d_aux = d_aux2; d_aux2 = d_swap;
-        //         // now aux2 is the input, copied into d_aux, and size is its size
-        //         size = nblocks;
-        //         // nblocks is the output of the next reduction
-        //         nblocks = (size + blocklength -1)/blocklength;
-        //         grid = dim3(nblocks, 1, 1 );
-        // }
 #endif
 }
 
 /**
  * Calculate array b of the linear system.
- * TODO: The non cublas version is exactly? duplicated from calculate_A??
+ *
+ * calculate_b is just a particular case of calculate_A. Particularly true in the non cuBLAS version.
+ * This is also commented in d_product_JacT_W_res in alignment.cuh
+ * No speed improvement at runtime is to be expected from changing this, whereas
+ * it could make the code less readable. Thus these operations are executed by
+ * different functions and different kernels.
  */
 void calculate_b (int level, int level_width, int level_height, cudaStream_t stream=0) {
 #ifdef ENABLE_CUBLAS
@@ -865,22 +861,6 @@ void calculate_b (int level, int level_width, int level_height, cudaStream_t str
                 numblocksZ = (size + blocklength -1)/blocklength;
         }
 
-        // reductions until size 1 // not implemented, required for larger images TODO
-        // while (true) {
-        //         d_sum <<< grid, block, blocklength*sizeof(float), stream >>> (d_aux, d_aux2, size); CUDA_CHECK;
-        //         // if no more reductions are needed, break. Result is in d_aux2
-        //         if (nblocks == 1) break;
-        //
-        //         // // copy d_aux2 to the beginning of d_aux
-        //         // cudaMemcpy( d_aux, d_aux2, nblocks*sizeof(float), cudaMemcpyDeviceToDevice ); CUDA_CHECK;
-        //         // swap pointers of aux and aux2
-        //         d_swap = d_aux; d_aux = d_aux2; d_aux2 = d_swap;
-        //         // now aux2 is the input, copied into d_aux, and size is its size
-        //         size = nblocks;
-        //         // nblocks is the output of the next reduction
-        //         nblocks = (size + blocklength -1)/blocklength;
-        //         grid = dim3(nblocks, 1, 1 );
-        // }
 #endif
 }
 
