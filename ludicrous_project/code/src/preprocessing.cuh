@@ -1,3 +1,13 @@
+/**
+ * \file
+ * \brief   Set of functions used for the preprocessing needed for each frame. Including:
+ * 				* Downscaling camera intrinsic matrix K
+ * 				* Resizing of images (small modification of G.Kuschk's cvlib)
+ *     			* Derivatives of gray images.
+ *
+ * \author  Oskar Carlbaum, Guillermo Gonzalez de Garibay, Georg Kuschk 04/2016
+ */
+
 #pragma once
 #include <Eigen/Dense>
 #include "Exception.h"

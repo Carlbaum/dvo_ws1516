@@ -1,4 +1,6 @@
 #!/bin/sh
+# Script for running the most relevant variations
+# of this implementation. This is non-/cuBLAS and Gaussian/T-Distribution weights.
 
 #../data/rgbd_dataset_freiburg1_desk
 #../data/rgbd_dataset_freiburg1_desk2

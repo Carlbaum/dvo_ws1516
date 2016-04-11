@@ -1,3 +1,9 @@
+/**
+ * \file
+ * \brief Load dataset images as openCV objects. Save poses to txt.
+ *
+ * Provided by the Vision department at TUM.
+ */
 #ifndef TUM_BENCHMARK_H
 #define TUM_BENCHMARK_H
 

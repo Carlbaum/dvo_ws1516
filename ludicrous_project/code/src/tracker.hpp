@@ -1,3 +1,15 @@
+/**
+ * \file
+ * \brief   Class implementing the paper.
+ *
+ * \author  Oskar Carlbaum, Guillermo Gonzalez de Garibay, Georg Kuschk
+ * \date    April 2016
+ *
+ * A class instance is created passing the first frame. Subsequent calls to the
+ * align function, providing each time a new frame, return the transformation from
+ * the last frame to the starting frame.
+ */
+
 #include <Eigen/Dense>
 #include "preprocessing.cuh"
 #include "lieAlgebra.hpp"
@@ -9,7 +21,7 @@
 #ifdef ENABLE_CUBLAS
         #include "cublas_v2.h"
 #endif
-// #include <string> //only needed for our 'debugging'
+// #include <string> // for 'debugging'
 
 enum SolvingMethod { GAUSS_NEWTON, LEVENBERG_MARQUARDT, GRADIENT_DESCENT };
 // enum ResidualWeight { NONE, HUBER, TDIST };

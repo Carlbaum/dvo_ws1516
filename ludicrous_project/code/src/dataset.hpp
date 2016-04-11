@@ -1,3 +1,8 @@
+/**
+* \file
+* \brief   Functions for loading TUM RGB-D SLAM Dataset's file names.
+*/
+
 #include <Eigen/Dense>
 #include "eigen_typedef.h"
 #include "lieAlgebra.hpp"

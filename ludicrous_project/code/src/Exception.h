@@ -1,7 +1,8 @@
 /**
 * \file
 * \brief   A generic exception implementation, derived from std::exception and
-*          capable of transporting user-defined error messages
+*          capable of transporting user-defined error messages. Extracted from
+*          Georg Kuschk's cvlib.
 *
 * \author  Georg Kuschk 12/2012
 */

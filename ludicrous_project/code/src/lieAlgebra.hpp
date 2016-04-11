@@ -1,3 +1,11 @@
+/**
+ * \file
+ * \brief   Lie algebra operations to avoid using the Sophus library (based on Eigen).
+ * 			The code implements two versions for each of the log and exp Lie operations.
+ *
+ * \author  Oskar Carlbaum, Guillermo Gonzalez de Garibay, Georg Kuschk 04/2016
+ */
+
 #pragma once
 
 #include <Eigen/Dense>

@@ -1,6 +1,19 @@
+/**
+ * \file
+ * \brief   Set of functions used for the alignment part of the algorithm. Including:
+ * 		   	* Warping
+ * 		   	* Jacobian
+ * 		   	* Residuals & error
+ * 		   	* Weights
+ * 		   	* Matrix multiplications (non-cuBLAS)
+ *
+ * \author  Oskar Carlbaum, Guillermo Gonzalez de Garibay, Georg Kuschk 04/2016
+ */
+
+#pragma once
+
 #include <cuda_runtime.h>
 #include <stdio.h>
-// #include <Eigen/Dense>  //TODO: viable to use Eigen in CUDA?
 
 #define TDIST_DOF 5
 

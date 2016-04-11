@@ -1,3 +1,8 @@
+/**
+ * \file
+ * \brief   Some useful Eigen-based variable types used along the project.
+ */
+
 #include <Eigen/Dense>
 
 using namespace Eigen;
