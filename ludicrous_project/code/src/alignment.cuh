@@ -13,7 +13,7 @@
 #pragma once
 
 #include <cuda_runtime.h>
-#include <stdio.h>
+#include <stdio.h>  // for a single warning
 
 #define TDIST_DOF 5
 

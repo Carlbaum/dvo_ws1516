@@ -17,8 +17,14 @@
  *
  */
 
-#include "helper.h"
 #include <iostream>
+
+#include <Eigen/Dense>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+
+#include "helper.h"
 #include "tum_benchmark.hpp"
 #include "dataset.hpp"
 #include "tracker.hpp"

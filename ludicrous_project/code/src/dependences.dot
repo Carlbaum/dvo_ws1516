@@ -1,0 +1,52 @@
+digraph {
+    main [shape=diamond, penwidth=3.0]
+    alignment [shape=box, penwidth=3.0]
+    common [shape=box]
+    dataset [shape=box]
+    Exception [shape=box]
+    helper [shape=box]
+    lieAlgebra [shape=box]
+    preprocessing [shape=box, penwidth=3.0]
+    tracker [shape=box, penwidth=3.0]
+    tum_benchmark [shape=box]
+
+    rankdir=LR;
+    main -> {   std
+                Eigen
+                opencv2
+                helper
+                tum_benchmark
+                dataset
+                tracker
+                common
+            };
+
+    helper -> { cuda_runtime opencv2 std };
+
+    tum_benchmark -> { std Eigen opencv2 };
+
+    dataset -> { Eigen common lieAlgebra tum_benchmark };
+
+    lieAlgebra -> { Eigen common };
+
+    tracker -> { Eigen
+                 preprocessing
+                 lieAlgebra
+                 alignment
+                 common
+                 cuda_runtime
+                 cublas_v2
+             };
+
+    alignment -> { cuda_runtime };
+
+    preprocessing -> { Eigen Exception cuda_runtime };
+
+    common -> { Eigen cuda_runtime };
+
+    /*{ rank=same, main }
+    { rank=same, tracker }
+    { rank=same, alignment, preprocessing }
+    { rank=same, helper, tum_benchmark, common, dataset, Exception, lieAlgebra }
+    { rank=same, opencv2, Eigen, cuda_runtime, cublas_v2 }*/
+}
