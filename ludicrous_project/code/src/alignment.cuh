@@ -23,6 +23,21 @@
 //_____________________________________________
 //_____________________________________________
 
+/**
+ * Image transformation function. Takes in the gray and depth values of the first
+ * frame and calculates their positions and proyection in the second frame.
+ * The transformation matrices RK_inv and K are not passed as arguments because
+ * they are in constant memory.
+ * @param x_prime  Output. Is the x coordinate of the 3D point in the second frame.
+ * @param y_prime  Output. Is the y coordinate of the 3D point in the second frame.
+ * @param z_prime  Output. Is the z coordinate of the 3D point in the second frame.
+ * @param u_warped Output. Is the u coordinate of the point in the second camera frame. It is set to -1 for non valid points (bad depth value or out of bounds in the second camera frame).
+ * @param v_warped Output. Is the v coordinate of the point in the second camera frame. It is set to -1 for non valid points (bad depth value or out of bounds in the second camera frame).
+ * @param depthImg Input. Depth image in the first frame.
+ * @param width    Current image height.
+ * @param height   Current image height.
+ * @param level    Current level in the pyramid.
+ */
 __global__ void d_transform_points( float *x_prime,
                                     float *y_prime,
                                     float *z_prime,
@@ -81,7 +96,8 @@ __global__ void d_transform_points( float *x_prime,
         if (    (u_warped[pos] < 0)
              || (u_warped[pos] > width-1)
              || (v_warped[pos] < 0)
-             || (v_warped[pos] > height-1) ) {
+             || (v_warped[pos] > height-1) )
+        {
                 u_warped[pos] = -1; // mark as not valid
                 v_warped[pos] = -1; // mark as not valid
         }
@@ -93,6 +109,18 @@ __global__ void d_transform_points( float *x_prime,
         // }
 }
 
+/**
+ * Calculates the jacobian matrix. Non valid pixels result in a whole row set to 0.
+ * @param J        Output. Jacobian stored as a single array component-wise/column-wise (this is: the componets for each pixel are width*height positions apart).
+ * @param x_prime  Input. Is the x coordinate of the 3D point in the second frame.
+ * @param y_prime  Input. Is the y coordinate of the 3D point in the second frame.
+ * @param z_prime  Input. Is the z coordinate of the 3D point in the second frame.
+ * @param u_warped Input. Is the u coordinate of the point in the second camera frame. Used to get the interpolation coordinates for the derivatives. It is -1 for non valid points (bad depth value or out of bounds in the second camera frame).
+ * @param v_warped Input. Is the v coordinate of the point in the second camera frame. Used to get the interpolation coordinates for the derivatives. It is -1 for non valid points (bad depth value or out of bounds in the second camera frame).
+ * @param width    Current image height.
+ * @param height   Current image height.
+ * @param level    Current level in the pyramid.
+ */
 __global__ void d_calculate_jacobian( float *J,
                                     const float *x_prime,
                                     const float *y_prime,
@@ -157,6 +185,17 @@ __global__ void d_calculate_jacobian( float *J,
 
 }
 
+/**
+ * Calculates the residuals array. Non valid pixels get a 0 residual.
+ * The gray image of the second frame is accessed through texture memory for interpolation.
+ * @param r        Output. Array with all the residuals.
+ * @param grayPrev Input. Gray image of the first frame.
+ * @param u_warped Input. Is the u coordinate of the point in the second camera frame. Used to get the interpolation coordinates for the derivatives. It is -1 for non valid points (bad depth value or out of bounds in the second camera frame).
+ * @param v_warped Input. Is the v coordinate of the point in the second camera frame. Used to get the interpolation coordinates for the derivatives. It is -1 for non valid points (bad depth value or out of bounds in the second camera frame).
+ * @param width    Current image height.
+ * @param height   Current image height.
+ * @param level    Current level in the pyramid.
+ */
 __global__ void d_calculate_residuals( float *r,
                                     const float *grayPrev,
                                     const float *u_warped,   // This is -1 for non-valid points
@@ -187,6 +226,12 @@ __global__ void d_calculate_residuals( float *r,
 //_____________________________________________
 //_____________________________________________
 
+/**
+ * Set an array of size width*height to ones.
+ * @param W      Output. Array of size width*height to fill with ones.
+ * @param width    Current image height.
+ * @param height   Current image height.
+ */
 __global__ void d_set_uniform_weights( float *W,
                                       const int width,
                                       const int height ) {
@@ -202,7 +247,18 @@ __global__ void d_set_uniform_weights( float *W,
         W[pos] = 1.0f;
 }
 
-__global__ void d_calculate_tdist_variance(float *weights,
+/**
+ * Execute one step in the iteration to calculate the T-Distribution variance.
+ * The number of degrees of freedom of the T-Distribution is set by the global
+ * variable TDIST_DOF.
+ * After this step a reduction is needed in order to sum up and average the values in aux.
+ * @param aux       Output. Squared residuals multiplied by a factor. It is a step in the iteration to calculate a T-Distribution variance.
+ * @param residuals Input. Residuals array.
+ * @param width     Current level image width.
+ * @param height    Current level image height.
+ * @param variance  Input. T-Distribution variance in the previous iterative step.
+ */
+__global__ void d_calculate_tdist_variance(float *aux,
                                       const float *residuals,
                                       const int width,
                                       const int height,
@@ -213,7 +269,7 @@ __global__ void d_calculate_tdist_variance(float *weights,
         if (x < width && y < height) {
                 float r_data_squared = residuals[x + y*width] * residuals[x + y*width];
                 //TDIST_DOF is degrees of freedom and is set to 5 as a compiler variable
-                weights[x + y*width] = r_data_squared * ( (TDIST_DOF + 1.0f) / (TDIST_DOF + (r_data_squared) / (variance) ) );
+                aux[x + y*width] = r_data_squared * ( (TDIST_DOF + 1.0f) / (TDIST_DOF + (r_data_squared) / (variance) ) );
         }
 }
 
@@ -238,7 +294,16 @@ __global__ void d_calculate_tdist_weights( float *weights,
 //_____________________________________________
 //_____________________________________________
 
-__global__ void d_squares_sum(float *input, float *results, int n) {
+/**
+ * First square every element, then reduce an array by a factor of blockDim.x .
+ * This kernel is suposed to be called with a 1D grid and a 1D kernel.
+ * @param input   Input array of size n.
+ * @param results Output array of size ceil(n/blockIdx.x) .
+ * @param n       Size of the input array.
+ */
+__global__ void d_squares_sum( const float *input,
+                               float *results,
+                               int n) {
         extern __shared__ float sdata[];
         int i = threadIdx.x + blockDim.x * blockIdx.x;
         int tx = threadIdx.x;
@@ -268,6 +333,13 @@ __global__ void d_squares_sum(float *input, float *results, int n) {
         }
 }
 
+/**
+ * Reduce an array by a factor of blockDim.x .
+ * This kernel is suposed to be called with a 1D grid and a 1D kernel.
+ * @param input   Input array of size n.
+ * @param results Output array of size ceil(n/blockIdx.x) .
+ * @param n       Size of the input array.
+ */
 __global__ void d_sum(float *input, float *results, int n) {
         extern __shared__ float sdata[];
         int i = threadIdx.x + blockDim.x * blockIdx.x;
@@ -304,12 +376,21 @@ __global__ void d_sum(float *input, float *results, int n) {
 //_______________________________________________________
 //_______________________________________________________
 
-__global__ void d_get_error ( float *square_sum,  // sum of the squares of the residuals
-                               float *error,
-                               const int width,
-                               const int height ) {
-        *error = *square_sum / (width*height);
-}
+// Not used because it is not needed to know the mean error, but only the sum of
+// the squared residuals, to use as a iteration stop criterium.
+// /**
+//  * Calculate the mean error. To be called with a gridSize and blockSize of 1.
+//  * @param square_sum Input. Pointer to a float. Sum of the squared residuals.
+//  * @param error      Output. Mean error.
+//  * @param width      Width of current image.
+//  * @param height     Height of current image.
+//  */
+// __global__ void d_get_error (  const float *square_sum,  // sum of the squares of the residuals
+//                                float *error,
+//                                const int width,
+//                                const int height ) {
+//         *error = *square_sum / (width*height);
+// }
 
 __global__ void d_calculate_jtw( float *JTW,
                                  const float *J,
@@ -438,6 +519,10 @@ __global__ void d_reduce_pre_M_towards_M(   float *pre_M_reduced,
  * Each block calculates a sub-product of the whole, depending on its x, y, z
  * coordinates. z corresponds to how far along the long axis of the Jacobian the
  * sub-product of 1024 elements starts. x corresponds to the row of the resulting b array.
+ *
+ * This code is just a simplification of d_product_JacT_W_Jac, and thus is most likely
+ * replaceable by it without any modification at all. They have just been kept separated
+ * for the sake of understandability.
  * @param *pre_b        output for storing this pre-computation
  * @param *J            input Jacobian, component-wise stretched to 1D
  * @param *W            input weights matrix, corresponding to each pixel of the images
