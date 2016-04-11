@@ -9,7 +9,7 @@
 #pragma once
 
 #include <Eigen/Dense>
-#include "eigen_typedef.h"
+#include "common.h"
 
 using namespace Eigen;
 

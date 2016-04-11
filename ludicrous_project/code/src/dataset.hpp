@@ -4,7 +4,7 @@
 */
 
 #include <Eigen/Dense>
-#include "eigen_typedef.h"
+#include "common.h"
 #include "lieAlgebra.hpp"
 #include "tum_benchmark.hpp"
 
@@ -27,7 +27,7 @@ std::vector<GroundtruthRow> loadGroundtruthFile(std::string file) {
   std::vector<GroundtruthRow> rows;
   std::ifstream stream;
   stream.open(file.c_str());
-  if (!stream.is_open()) { throw std::runtime_error("Could not open file"); }
+  if (!stream.is_open()) { throw std::runtime_error("Could not open file "+file); }
 
   std::string line;
   while (getline(stream, line)) {
@@ -57,7 +57,7 @@ std::vector<ImageListRow> loadImageList(std::string file) {
   std::vector<ImageListRow> rows;
   std::ifstream stream;
   stream.open(file.c_str());
-  if (!stream.is_open()) { throw std::runtime_error("Could not open file"); }
+  if (!stream.is_open()) { throw std::runtime_error("Could not open file "+file); }
 
   std::string line;
   while (getline(stream, line)) {
@@ -77,7 +77,7 @@ Eigen::Matrix3f loadK(std::string file) {
   std::vector<float> Ks;
   std::ifstream stream;
   stream.open(file.c_str());
-  if (!stream.is_open()) { throw std::runtime_error("Could not open file K.txt"); }
+  if (!stream.is_open()) { throw std::runtime_error("Could not open file "+file); }
 
   std::string line;
   while (getline(stream, line)) {

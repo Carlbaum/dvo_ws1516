@@ -14,6 +14,7 @@
 #include "preprocessing.cuh"
 #include "lieAlgebra.hpp"
 #include "alignment.cuh"
+#include "common.h"
 // cuBLAS
 #define CUDA_API_PER_THREAD_DEFAULT_STREAM
 #include <cuda_runtime.h>

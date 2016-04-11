@@ -21,30 +21,8 @@
 #include <iostream>
 #include "tum_benchmark.hpp"
 #include "dataset.hpp"
-
-//using namespace std;
-
-// TODO: is this the proper way of using global variables inside the tracker class?
-// global variables
-const int MAX_LEVELS = 7;
-// CUDA related
-int devID;
-cudaDeviceProp props;
-int g_CUDA_maxSharedMemSize;
-const int g_CUDA_blockSize2DX = 16;
-const int g_CUDA_blockSize2DY = 16;
-const int BORDER_ZERO = 1;
-const int BORDER_REPLICATE = 2;
-
-// tracker uses these global variables, so it has to be included after them
-__constant__ float const_K_pyr[9*MAX_LEVELS];     // Allocates constant memory in excess for K and K downscaled. Stored column-wise and matrix after matrix
-__constant__ float const_RK_inv[9];     // Allocates space for the concatenation of a rotation and an intrinsic matrix. Stored column-wise
-__constant__ float const_translation[3];     // Allocates space for a translation vector
-texture <float, 2, cudaReadModeElementType> texRef_grayImg;
-texture <float, 2, cudaReadModeElementType> texRef_gray_dx;
-texture <float, 2, cudaReadModeElementType> texRef_gray_dy;
-
 #include "tracker.hpp"
+#include "common.h"
 
 int main(int argc, char *argv[]) {
         //_______________________________________________________
@@ -180,9 +158,9 @@ int main(int argc, char *argv[]) {
         //_______________________________________________________
 
         // Save poses to disk
-        std::cout << std::endl  << "Total time for loading + doing calculations on "
+        std::cout << std::endl  << "Loading + doing calculations on "
                   << dataset.frames.size() << " images took " << total_time
-                  << " ms.\nThis gives us an average of "
+                  << " ms.\nThis is an average of "
                   << total_time/dataset.frames.size()
                   << " ms per frame.\n" << std::endl;
 
@@ -192,11 +170,11 @@ int main(int argc, char *argv[]) {
         } else {
                 options += "_gdist";
         }
-    #ifdef ENABLE_CUBLAS
+#ifdef ENABLE_CUBLAS
         options += "_cublas";
-    #else
+#else
         options += "_nocublas";
-    #endif
+#endif
 
         savePoses( path +options+ "_trajectory.txt", poses, timestamps);
 
