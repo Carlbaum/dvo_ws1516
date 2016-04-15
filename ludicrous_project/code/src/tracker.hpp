@@ -188,9 +188,6 @@ Vector6f align(float *grayCur, float *depthCur) {
                         calculate_b ( level, level_width, level_height ); //, stream1 );
 
                         cudaDeviceSynchronize();
-                        // copy A and b to CPU memory
-                        cudaMemcpy ( A.data(), d_A, 6*6*sizeof(float), cudaMemcpyDeviceToHost);
-                        cudaMemcpy ( b.data(), d_b, 6*sizeof(float), cudaMemcpyDeviceToHost);
                         // solve linear system: A * delta_xi = b; with solver of Eigen library: CPU operation.      TODO: Faster to solve directly in GPU?
                         xi_delta = -(A.ldlt().solve(b)); // Solve using Cholesky LDLT decomposition
 
@@ -709,6 +706,10 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
                 // cudaMemcpy(A.data(), d_A, 6*6*sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;
                 // TODO now done in the iteration loop
         }
+
+        // copy A to CPU memory
+        cudaDeviceSynchronize();
+        cudaMemcpy ( A.data(), d_A, 6*6*sizeof(float), cudaMemcpyDeviceToHost);
         //std::cout << "Matrix A: \n" << A << std::endl;
 #else
         int size = level_width * level_height;
@@ -750,14 +751,15 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
                 // d_A is the output of the next reduction, is 6x6xnumblocksZ
                 grid = dim3( numblocksX, numblocksY, numblocksZ );
 
-                // if this is the last iteration, write to A
-                if (numblocksZ == 1) d_pre_A_aux = d_A;
+                // // if this is the last iteration, write to A
+                // if (numblocksZ == 1) d_pre_A_aux = d_A;
                 d_reduce_pre_M_towards_M <<< grid, block, blocklength*sizeof(float), streams[1] >>> (d_pre_A_aux, d_pre_A, size); CUDA_CHECK;
-                // if reduction is complete, break
-                if (numblocksZ == 1) break;
 
                 // swap pre_A and pre_A_aux pointers to change input and output for next iteration
                 d_swap = d_pre_A; d_pre_A = d_pre_A_aux; d_pre_A_aux = d_swap;
+
+                // if reduction is complete, break
+                if (numblocksZ == 1) break;
 
                 // now d_pre_A has the size d_pre_A_aux had in the previous iteration
                 size = numblocksZ;
@@ -765,6 +767,9 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
                 numblocksZ = (size + blocklength -1)/blocklength;
         }
 
+        // copy A to CPU memory
+        cudaDeviceSynchronize();
+        cudaMemcpy ( A.data(), d_pre_A, 6*6*sizeof(float), cudaMemcpyDeviceToHost);
 #endif
 }
 
@@ -807,6 +812,10 @@ void calculate_b (int level, int level_width, int level_height, cudaStream_t str
                 // cudaMemcpy(b.data(), d_b, 6*sizeof(float), cudaMemcpyDeviceToHost); CUDA_CHECK;
                 // TODO now done in the iteration loop
         }
+
+        // copy b to CPU memory
+        cudaDeviceSynchronize();
+        cudaMemcpy ( b.data(), d_b, 6*sizeof(float), cudaMemcpyDeviceToHost);
 #else
         int size = level_width * level_height;
         // threads per block equals maximum possible
@@ -849,11 +858,12 @@ void calculate_b (int level, int level_width, int level_height, cudaStream_t str
                 // if this is the last iteration, write to A
                 if (numblocksZ == 1) d_pre_b_aux = d_b;
                 d_reduce_pre_M_towards_M <<< grid, block, blocklength*sizeof(float), streams[1] >>> (d_pre_b_aux, d_pre_b, size); CUDA_CHECK;
-                // if reduction is complete, break
-                if (numblocksZ == 1) break;
 
                 // swap pre_A and pre_A_aux pointers to change input and output for next iteration
                 d_swap = d_pre_b; d_pre_b = d_pre_b_aux; d_pre_b_aux = d_swap;
+
+                // if reduction is complete, break
+                if (numblocksZ == 1) break;
 
                 // now d_pre_A has the size d_pre_A_aux had in the previous iteration
                 size = numblocksZ;
@@ -861,6 +871,9 @@ void calculate_b (int level, int level_width, int level_height, cudaStream_t str
                 numblocksZ = (size + blocklength -1)/blocklength;
         }
 
+        // copy b to CPU memory
+        cudaDeviceSynchronize();
+        cudaMemcpy ( b.data(), d_pre_b, 6*sizeof(float), cudaMemcpyDeviceToHost);
 #endif
 }
 
@@ -925,6 +938,14 @@ void allocateGPUMemory() {
                 cudaMalloc(&d_cur [level].gray_dy, level_width*level_height*sizeof(float)); CUDA_CHECK;
                 cudaMalloc(&d_prev[level].gray_dy, level_width*level_height*sizeof(float)); CUDA_CHECK;
         }
+
+// #ifndef ENABLE_CUBLAS
+//         // auxiliar arrays for cuda matrix multiplications
+//         cudaMalloc(&d_pre_A, 6*6*width*height*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
+//         cudaMalloc(&d_pre_A_aux, 6*6*width*height*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
+//         cudaMalloc(&d_pre_b, 6*1*width*height*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
+//         cudaMalloc(&d_pre_b_aux, 6*1*width*height*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
+// #endif
 
 }
 
