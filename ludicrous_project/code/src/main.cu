@@ -170,11 +170,11 @@ int main(int argc, char *argv[]) {
                   << total_time/dataset.frames.size()
                   << " ms per frame.\n" << std::endl;
 
-        std::string options = "";
+        std::string options = "/";
         if (tDistWeights) {
-                options += "_tdist";
+                options += "tdist";
         } else {
-                options += "_gdist";
+                options += "gdist";
         }
 #ifdef ENABLE_CUBLAS
         options += "_cublas";
