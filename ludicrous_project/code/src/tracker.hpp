@@ -314,6 +314,10 @@ std::vector<PyramidLevel> temp_swap;
 Matrix3f R;
 Matrix3f RK_inv;
 Vector3f t;
+#ifndef ENABLE_CUBLAS
+// these shouldn't be declared if CUBLAS is used
+float *d_pre_A, *d_pre_A_aux, *d_pre_b, *d_pre_b_aux;
+#endif
 
 // host variables
 // watch out: Eigen::Matrix are stored column wise
@@ -724,9 +728,9 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
             // total
         int gridVolume = numblocksX*numblocksY*numblocksZ;
 
-        // alloc auxiliar array for all the matrix sub-products forming the 3D "volume" (stored in an array) previous to computing A
-        float *d_pre_A = NULL;
-        cudaMalloc(&d_pre_A, gridVolume*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
+        // // alloc auxiliar array for all the matrix sub-products forming the 3D "volume" (stored in an array) previous to computing A
+        // float *d_pre_A = NULL;
+        // cudaMalloc(&d_pre_A, gridVolume*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
         float *d_swap;
 
         dim3 block = dim3(blocklength,1,1);
@@ -741,11 +745,11 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
         // numblocksZ is now the size after the next reduction
         numblocksZ = (size + blocklength -1)/blocklength;
 
-        // another auxiliar array is needed for storing intermediate results.
-        // This allocates the space needed for the first iteration. There will be
-        // storage in excess for the rest of needed iterations
-        float *d_pre_A_aux = NULL;
-        cudaMalloc(&d_pre_A_aux, numblocksX*numblocksY*numblocksZ*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
+        // // another auxiliar array is needed for storing intermediate results.
+        // // This allocates the space needed for the first iteration. There will be
+        // // storage in excess for the rest of needed iterations
+        // float *d_pre_A_aux = NULL;
+        // cudaMalloc(&d_pre_A_aux, numblocksX*numblocksY*numblocksZ*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
 
         while (true) {
                 // d_A is the output of the next reduction, is 6x6xnumblocksZ
@@ -829,9 +833,9 @@ void calculate_b (int level, int level_width, int level_height, cudaStream_t str
             // total
         int gridVolume = numblocksX*numblocksY*numblocksZ;
 
-        // alloc auxiliar array for all the matrix sub-products forming the 3D "volume" (stored in an array) previous to computing A
-        float *d_pre_b = NULL;
-        cudaMalloc(&d_pre_b, gridVolume*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
+        // // alloc auxiliar array for all the matrix sub-products forming the 3D "volume" (stored in an array) previous to computing A
+        // float *d_pre_b = NULL;
+        // cudaMalloc(&d_pre_b, gridVolume*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
         float *d_swap;
 
         dim3 block = dim3(blocklength,1,1);
@@ -845,11 +849,11 @@ void calculate_b (int level, int level_width, int level_height, cudaStream_t str
         // numblocksZ is now the size after the next reduction
         numblocksZ = (size + blocklength -1)/blocklength;
 
-        // another auxiliar array is needed for storing intermediate results.
-        // This allocates the space needed for the first iteration. There will be
-        // storage in excess for the rest of needed iterations
-        float *d_pre_b_aux = NULL;
-        cudaMalloc(&d_pre_b_aux, numblocksX*numblocksY*numblocksZ*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
+        // // another auxiliar array is needed for storing intermediate results.
+        // // This allocates the space needed for the first iteration. There will be
+        // // storage in excess for the rest of needed iterations
+        // float *d_pre_b_aux = NULL;
+        // cudaMalloc(&d_pre_b_aux, numblocksX*numblocksY*numblocksZ*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
 
         while (true) {
                 // d_A is the output of the next reduction, is 6x6xnumblocksZ
@@ -939,13 +943,14 @@ void allocateGPUMemory() {
                 cudaMalloc(&d_prev[level].gray_dy, level_width*level_height*sizeof(float)); CUDA_CHECK;
         }
 
-// #ifndef ENABLE_CUBLAS
-//         // auxiliar arrays for cuda matrix multiplications
-//         cudaMalloc(&d_pre_A, 6*6*width*height*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
-//         cudaMalloc(&d_pre_A_aux, 6*6*width*height*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
-//         cudaMalloc(&d_pre_b, 6*1*width*height*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
-//         cudaMalloc(&d_pre_b_aux, 6*1*width*height*sizeof(float)); CUDA_CHECK;  // to avoid overwriting the residuals array
-// #endif
+#ifndef ENABLE_CUBLAS
+        // these shouldn't be declared if CUBLAS is used
+        // auxiliar arrays for cuda matrix multiplications
+        cudaMalloc(&d_pre_A, (6*6*width*height*sizeof(float) + 1023)/1024); CUDA_CHECK;  // to avoid overwriting the residuals array
+        cudaMalloc(&d_pre_A_aux, (6*6*width*height*sizeof(float) + 1023)/1024); CUDA_CHECK;  // to avoid overwriting the residuals array
+        cudaMalloc(&d_pre_b, (6*1*width*height*sizeof(float) + 1023)/1024); CUDA_CHECK;  // to avoid overwriting the residuals array
+        cudaMalloc(&d_pre_b_aux, (6*1*width*height*sizeof(float) + 1023)/1024); CUDA_CHECK;  // to avoid overwriting the residuals array
+#endif
 
 }
 
