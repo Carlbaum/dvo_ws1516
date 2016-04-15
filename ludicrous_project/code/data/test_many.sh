@@ -1,6 +1,16 @@
 #!/bin/bash
 while read setname; do
-	wget http://vision.in.tum.de/rgbd/dataset/freiburg1/$setname.tgz &&
+	if [[ $setname == *"freiburg1"* ]]
+	then
+  		urlname="freiburg1/"$setname;
+	elif [[ $setname == *"freiburg2"* ]]
+	then
+  		urlname="freiburg2/"$setname;
+	elif [[ $setname == *"freiburg3"* ]]
+	then
+  		urlname="freiburg3/"$setname;		
+	fi
+	wget http://vision.in.tum.de/rgbd/dataset/$urlname.tgz &&
 	tar -xzvf $setname.tgz &&
 	rm "$setname".tgz &&
 	if [[ $setname == *"freiburg1"* ]]
@@ -16,6 +26,7 @@ while read setname; do
   		cp ./K_freiburg3/K.txt ./"$setname";
 		echo "3";		
 	fi
+
 	cd ../src
 	./run_all.sh $setname
 	cd -
