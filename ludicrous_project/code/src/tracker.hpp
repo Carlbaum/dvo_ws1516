@@ -370,15 +370,15 @@ void fill_pyramid(std::vector<PyramidLevel>& d_img, float *grayImg, float *depth
         for (int level = 1; level <= maxLevel; level++) {
                 level_width = width / (1 << level); // bitwise operator to divide by 2**level
                 level_height = height / (1 << level);
-                imresize_CUDA(d_img[level-1].gray, d_img[level].gray, 2*level_width, 2*level_height, level_width, level_height, 1, false/*,streams[0]*/); CUDA_CHECK;
-                imresize_CUDA(d_img[level-1].depth, d_img[level].depth, 2*level_width, 2*level_height, level_width, level_height, 1, true/*,streams[1]*/); CUDA_CHECK; // TODO: Check properly if isDepthImage is working. Looks like it does
+                imresize_CUDA(d_img[level-1].gray, d_img[level].gray, 2*level_width, 2*level_height, level_width, level_height, 1, false/*,0*/); CUDA_CHECK;
+                imresize_CUDA(d_img[level-1].depth, d_img[level].depth, 2*level_width, 2*level_height, level_width, level_height, 1, true/*,0*/); CUDA_CHECK; // TODO: Check properly if isDepthImage is working. Looks like it does
         }
         cudaDeviceSynchronize(); // TODO: 2 instances of imresize can't be run in parallel atm, because of some cudaMalloc & cudaFree in that scope
         for (int level = 0; level <= maxLevel; level++) {
                 level_width = width / (1 << level); // bitwise operator to divide by 2**level
                 level_height = height / (1 << level);
                 // compute derivatives!!
-                image_derivatives_CUDA(d_img[level].gray,d_img[level].gray_dx,d_img[level].gray_dy,level_width,level_height,streams[level%2]); CUDA_CHECK;
+                image_derivatives_CUDA(d_img[level].gray,d_img[level].gray_dx,d_img[level].gray_dy,level_width,level_height); CUDA_CHECK;
         }
         // //Debug
         // for (int level = 0; level < maxLevel; level++) {
@@ -446,7 +446,7 @@ void calculate_jacobian(int level, int level_width, int level_height, cudaStream
           int   gridSizeY = (level_height + dimBlock.y-1) / dimBlock.y;
           dim3  dimGrid( gridSizeX, gridSizeY, 1 );
 
-          d_calculate_jacobian <<< dimGrid, dimBlock, 0, streams[1] >>> (d_J, d_x_prime, d_y_prime, d_z_prime, d_u_warped, d_v_warped, level_width, level_height, level); // texture is accessed directly. No argument needed
+          d_calculate_jacobian <<< dimGrid, dimBlock, 0, 0 >>> (d_J, d_x_prime, d_y_prime, d_z_prime, d_u_warped, d_v_warped, level_width, level_height, level); // texture is accessed directly. No argument needed
         //   CUDA_CHECK;
 }
 
@@ -464,7 +464,7 @@ void calculate_residuals(int level, int level_width, int level_height, cudaStrea
           int   gridSizeY = (level_height + dimBlock.y-1) / dimBlock.y;
           dim3  dimGrid( gridSizeX, gridSizeY, 1 );
 
-          d_calculate_residuals <<< dimGrid, dimBlock, 0, streams[0] >>> (d_r, d_prev[level].gray, d_u_warped, d_v_warped, level_width, level_height, level); // texture is accessed directly. No argument needed
+          d_calculate_residuals <<< dimGrid, dimBlock, 0, 0 >>> (d_r, d_prev[level].gray, d_u_warped, d_v_warped, level_width, level_height, level); // texture is accessed directly. No argument needed
         //   CUDA_CHECK;
 }
 
@@ -475,7 +475,7 @@ void calculate_error(int level, int level_width, int level_height, cudaStream_t 
 #ifdef ENABLE_CUBLAS
         int n = level_width*level_height;
         // Calculate the error from the residuals. sum(errors) = r' * r
-        cublasSetStream(handle, streams[0]);
+        cublasSetStream(handle, 0);
         cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, 1, 1, n, &alpha, d_r, n, d_r, n, &beta, d_error, 1);
 #else
         int size = level_width * level_height;
@@ -494,7 +494,7 @@ void calculate_error(int level, int level_width, int level_height, cudaStream_t 
         dim3 grid = dim3(nblocks, 1, 1 );
 
         // first reduction. Return reduction by 1024 in aux
-        d_squares_sum <<< grid, block, blocklength*sizeof(float), stream >>> (d_r, d_aux, size);// CUDA_CHECK;
+        d_squares_sum <<< grid, block, blocklength*sizeof(float), 0 >>> (d_r, d_aux, size);// CUDA_CHECK;
 
         // now aux is the input, and size is its size
         size = nblocks;
@@ -508,7 +508,7 @@ void calculate_error(int level, int level_width, int level_height, cudaStream_t 
 
         // reductions until size 1
         while (true) {
-                d_sum <<< grid, block, blocklength*sizeof(float), stream >>> (d_aux, d_aux2, size);// CUDA_CHECK;
+                d_sum <<< grid, block, blocklength*sizeof(float), 0 >>> (d_aux, d_aux2, size);// CUDA_CHECK;
                 // if no more reductions are needed, break. Result is in d_aux2
                 if (nblocks == 1) break;
 
@@ -555,7 +555,7 @@ void calculate_weights( int level,
         dim3  dimGrid( gridSizeX, gridSizeY, 1 );
 
         if ( ! useTDist ) {    // use uniform weights
-                d_set_uniform_weights <<< dimGrid, dimBlock, 0, streams[0] >>> (d_W, level_width, level_height); //CUDA_CHECK;
+                d_set_uniform_weights <<< dimGrid, dimBlock, 0, 0 >>> (d_W, level_width, level_height); //CUDA_CHECK;
         } else {    // use T-Distribution weights
                 int   n = level_width * level_height;
 
@@ -566,7 +566,7 @@ void calculate_weights( int level,
                       variance_init = variance;
                       // here d_W is used just as an auxiliar variable
                       // this returns the squared weighed residuals in d_W, which have to be reduced to get the variance
-                      d_calculate_tdist_variance <<< dimGrid, dimBlock, 0, streams[0] >>> (d_W, d_r, level_width, level_height, variance_init); CUDA_CHECK;
+                      d_calculate_tdist_variance <<< dimGrid, dimBlock, 0, 0 >>> (d_W, d_r, level_width, level_height, variance_init); CUDA_CHECK;
 
                       //compute new variance:
 #ifdef ENABLE_CUBLAS
@@ -580,7 +580,7 @@ void calculate_weights( int level,
                       && (iterations < 5) );
 
                 variance_init = variance;
-                d_calculate_tdist_weights <<< dimGrid, dimBlock, 0, streams[0] >>> (d_W, d_r, level_width, level_height, variance); CUDA_CHECK;
+                d_calculate_tdist_weights <<< dimGrid, dimBlock, 0, 0 >>> (d_W, d_r, level_width, level_height, variance); CUDA_CHECK;
 
                 //cout << "Tdist estimate scale in  " << iterations << " iterations" << endl;
 
@@ -598,7 +598,7 @@ void calculate_jtw(int level, int level_width, int level_height) {
         int gridSizeX = (lev_size + dimBlockJ.x-1) / dimBlockJ.x;
         dim3 dimGridJ( gridSizeX, 1, 1 );
         cudaDeviceSynchronize(); //streams[0] and streams[1] must be done before the next call
-        d_calculate_jtw <<<dimGridJ, dimBlockJ, 0, streams[1] >>>(d_JTW, d_J, d_W, lev_size, 6); CUDA_CHECK;
+        d_calculate_jtw <<<dimGridJ, dimBlockJ, 0, 0 >>>(d_JTW, d_J, d_W, lev_size, 6); CUDA_CHECK;
         cudaDeviceSynchronize(); // d_JTW must be done before any other calculations on GPU
 }
 
@@ -626,7 +626,7 @@ void reduce_array_GPU ( float *p_out, float *d_arr, int size, cudaStream_t strea
 
         // first reduction. Return reduction by 1024 in aux
         // d_sum (input, output, size)
-        d_sum <<< grid, block, blocklength*sizeof(float), stream >>> (d_arr, d_aux, size);// CUDA_CHECK;
+        d_sum <<< grid, block, blocklength*sizeof(float), 0 >>> (d_arr, d_aux, size);// CUDA_CHECK;
 
         // now aux is the input, and size is its size
         size = nblocks;
@@ -641,7 +641,7 @@ void reduce_array_GPU ( float *p_out, float *d_arr, int size, cudaStream_t strea
         // reductions until size 1
         while (true) {
                 // d_sum (input, output, size)
-                d_sum <<< grid, block, blocklength*sizeof(float), stream >>> (d_aux, d_aux2, size);// CUDA_CHECK;
+                d_sum <<< grid, block, blocklength*sizeof(float), 0 >>> (d_aux, d_aux2, size);// CUDA_CHECK;
                 // if no more reductions are needed, break. Result is in d_aux2
                 if (nblocks == 1) break;
 
@@ -673,7 +673,7 @@ void reduce_array_GPU ( float *p_out, float *d_arr, int size, cudaStream_t strea
 void calculate_A (int level, int level_width, int level_height, cudaStream_t stream=0) {
 #ifdef ENABLE_CUBLAS
         int n = level_width*level_height;
-        cublasSetStream(handle, streams[1]);
+        cublasSetStream(handle, 0);
 
         // Use nVidia's cuBLAS library for linear algebra calculations
 
@@ -734,7 +734,7 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
 
         // J'*W*J pre-calculation, yet to be reduced. Gets stored into d_pre_A (previous to A)
         cudaDeviceSynchronize(); //Both streams[0] and streams[1] must be 0 before next call
-        d_product_JacT_W_Jac <<< grid, block, blocklength*sizeof(float), streams[1] >>> (d_pre_A, d_J, d_W, size); CUDA_CHECK;
+        d_product_JacT_W_Jac <<< grid, block, blocklength*sizeof(float), 0 >>> (d_pre_A, d_J, d_W, size); CUDA_CHECK;
 
         // now d_pre_A is the input, and size is its size per column to be reduced
         size = numblocksZ;
@@ -753,7 +753,7 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
 
                 // // if this is the last iteration, write to A
                 // if (numblocksZ == 1) d_pre_A_aux = d_A;
-                d_reduce_pre_M_towards_M <<< grid, block, blocklength*sizeof(float), streams[1] >>> (d_pre_A_aux, d_pre_A, size); CUDA_CHECK;
+                d_reduce_pre_M_towards_M <<< grid, block, blocklength*sizeof(float), 0 >>> (d_pre_A_aux, d_pre_A, size); CUDA_CHECK;
 
                 // swap pre_A and pre_A_aux pointers to change input and output for next iteration
                 d_swap = d_pre_A; d_pre_A = d_pre_A_aux; d_pre_A_aux = d_swap;
@@ -785,7 +785,7 @@ void calculate_A (int level, int level_width, int level_height, cudaStream_t str
 void calculate_b (int level, int level_width, int level_height, cudaStream_t stream=0) {
 #ifdef ENABLE_CUBLAS
         int n = level_width*level_height;
-        cublasSetStream(handle, streams[0]);
+        cublasSetStream(handle, 0);
         // Use nVidia's cuBLAS library for linear algebra calculations
 
         // Matrix multiplication using cuBLAS looks like this:
@@ -838,7 +838,7 @@ void calculate_b (int level, int level_width, int level_height, cudaStream_t str
         dim3 grid = dim3( numblocksX, numblocksY, numblocksZ );
 
         // J'*W*J pre-calculation, yet to be reduced. Gets stored into d_pre_b (previous to A)
-        d_product_JacT_W_res <<< grid, block, blocklength*sizeof(float), streams[0] >>> (d_pre_b, d_J, d_W, d_r, size); CUDA_CHECK;
+        d_product_JacT_W_res <<< grid, block, blocklength*sizeof(float), 0 >>> (d_pre_b, d_J, d_W, d_r, size); CUDA_CHECK;
 
         // now aux is the input, and size is its size
         size = numblocksZ;
@@ -857,7 +857,7 @@ void calculate_b (int level, int level_width, int level_height, cudaStream_t str
 
                 // if this is the last iteration, write to A
                 if (numblocksZ == 1) d_pre_b_aux = d_b;
-                d_reduce_pre_M_towards_M <<< grid, block, blocklength*sizeof(float), streams[1] >>> (d_pre_b_aux, d_pre_b, size); CUDA_CHECK;
+                d_reduce_pre_M_towards_M <<< grid, block, blocklength*sizeof(float), 0 >>> (d_pre_b_aux, d_pre_b, size); CUDA_CHECK;
 
                 // swap pre_A and pre_A_aux pointers to change input and output for next iteration
                 d_swap = d_pre_b; d_pre_b = d_pre_b_aux; d_pre_b_aux = d_swap;
