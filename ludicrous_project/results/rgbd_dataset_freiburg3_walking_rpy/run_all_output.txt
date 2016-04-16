@@ -1,0 +1,178 @@
+
+*******************************************************
+*********DENSE VISUAL ODOMETRY PROGRAM STARTED*********
+*******************************************************
+
+Path to dataset: ../data/rgbd_dataset_freiburg3_walking_rpy
+tDistWeights: 0
+number of levels in pyramids: 4
+
+Starting main loop, reading images and calculating trajectory. Take a chill pill, this may take a while!
+
+
+Loading + doing calculations on 871 images took 44868.9 ms.
+This is an average of 51.5143 ms per frame.
+
+All done! Check out the output file: ../data/rgbd_dataset_freiburg3_walking_rpy/gdist_nocublas_trajectory.txt for the resulting trajectory!
+
+
+*******************************************************
+*********DENSE VISUAL ODOMETRY PROGRAM STARTED*********
+*******************************************************
+
+Path to dataset: ../data/rgbd_dataset_freiburg3_walking_rpy
+tDistWeights: 1
+number of levels in pyramids: 4
+
+Starting main loop, reading images and calculating trajectory. Take a chill pill, this may take a while!
+
+
+Loading + doing calculations on 871 images took 78149.2 ms.
+This is an average of 89.7236 ms per frame.
+
+All done! Check out the output file: ../data/rgbd_dataset_freiburg3_walking_rpy/tdist_nocublas_trajectory.txt for the resulting trajectory!
+
+
+*******************************************************
+*********DENSE VISUAL ODOMETRY PROGRAM STARTED*********
+*******************************************************
+
+Using cuBLAS
+Path to dataset: ../data/rgbd_dataset_freiburg3_walking_rpy
+tDistWeights: 0
+number of levels in pyramids: 4
+
+
+!--------------cuBLAS initialization succesful--------------!
+
+
+Starting main loop, reading images and calculating trajectory. Take a chill pill, this may take a while!
+
+
+Loading + doing calculations on 871 images took 21482.9 ms.
+This is an average of 24.6647 ms per frame.
+
+All done! Check out the output file: ../data/rgbd_dataset_freiburg3_walking_rpy/gdist_cublas_trajectory.txt for the resulting trajectory!
+
+
+*******************************************************
+*********DENSE VISUAL ODOMETRY PROGRAM STARTED*********
+*******************************************************
+
+Using cuBLAS
+Path to dataset: ../data/rgbd_dataset_freiburg3_walking_rpy
+tDistWeights: 1
+number of levels in pyramids: 4
+
+
+!--------------cuBLAS initialization succesful--------------!
+
+
+Starting main loop, reading images and calculating trajectory. Take a chill pill, this may take a while!
+
+
+Loading + doing calculations on 871 images took 34939.8 ms.
+This is an average of 40.1146 ms per frame.
+
+All done! Check out the output file: ../data/rgbd_dataset_freiburg3_walking_rpy/tdist_cublas_trajectory.txt for the resulting trajectory!
+
+*******************************************************
+*********** PYTHON EVALUATION TOOL RESULTS ************
+*******************************************************
+
+*******************************************************
+no cublas no weigths RPE:
+compared_pose_pairs 842 pairs
+translational_error.rmse 0.417571 m
+translational_error.mean 0.306105 m
+translational_error.median 0.215914 m
+translational_error.std 0.284015 m
+translational_error.min 0.006986 m
+translational_error.max 1.245379 m
+rotational_error.rmse 7.338201 deg
+rotational_error.mean 5.343215 deg
+rotational_error.median 0.059510 deg
+rotational_error.std 5.029836 deg
+rotational_error.min 1.026051 deg
+rotational_error.max 25.355126 deg
+*******************************************************
+no cublas no weigths ATE:
+compared_pose_pairs 870 pairs
+absolute_translational_error.rmse 1.108323 m
+absolute_translational_error.mean 0.948188 m
+absolute_translational_error.median 0.978237 m
+absolute_translational_error.std 0.573864 m
+absolute_translational_error.min 0.057590 m
+absolute_translational_error.max 2.225681 m
+*******************************************************
+no cublas with weigths RPE:
+compared_pose_pairs 842 pairs
+translational_error.rmse 0.465502 m
+translational_error.mean 0.329919 m
+translational_error.median 0.206418 m
+translational_error.std 0.328399 m
+translational_error.min 0.005611 m
+translational_error.max 1.455771 m
+rotational_error.rmse 8.795127 deg
+rotational_error.mean 6.473437 deg
+rotational_error.median 0.070576 deg
+rotational_error.std 5.953895 deg
+rotational_error.min 1.019090 deg
+rotational_error.max 31.279413 deg
+*******************************************************
+no cublas with weigths ATE:
+compared_pose_pairs 870 pairs
+absolute_translational_error.rmse 1.255451 m
+absolute_translational_error.mean 1.110401 m
+absolute_translational_error.median 1.064660 m
+absolute_translational_error.std 0.585806 m
+absolute_translational_error.min 0.252384 m
+absolute_translational_error.max 2.501122 m
+*******************************************************
+cublas no weigths RPE:
+compared_pose_pairs 842 pairs
+translational_error.rmse 0.416332 m
+translational_error.mean 0.304353 m
+translational_error.median 0.214748 m
+translational_error.std 0.284081 m
+translational_error.min 0.008968 m
+translational_error.max 1.243608 m
+rotational_error.rmse 7.320526 deg
+rotational_error.mean 5.312881 deg
+rotational_error.median 0.059513 deg
+rotational_error.std 5.036208 deg
+rotational_error.min 1.009321 deg
+rotational_error.max 25.263394 deg
+*******************************************************
+cublas no weigths ATE:
+compared_pose_pairs 870 pairs
+absolute_translational_error.rmse 1.106695 m
+absolute_translational_error.mean 0.946449 m
+absolute_translational_error.median 0.982538 m
+absolute_translational_error.std 0.573592 m
+absolute_translational_error.min 0.046187 m
+absolute_translational_error.max 2.225550 m
+*******************************************************
+cublas with weigths RPE:
+compared_pose_pairs 842 pairs
+translational_error.rmse 0.460642 m
+translational_error.mean 0.326182 m
+translational_error.median 0.202348 m
+translational_error.std 0.325264 m
+translational_error.min 0.008664 m
+translational_error.max 1.449997 m
+rotational_error.rmse 8.602440 deg
+rotational_error.mean 6.205044 deg
+rotational_error.median 0.067010 deg
+rotational_error.std 5.958139 deg
+rotational_error.min 0.827215 deg
+rotational_error.max 30.920101 deg
+*******************************************************
+cublas with weigths ATE:
+compared_pose_pairs 870 pairs
+absolute_translational_error.rmse 1.246721 m
+absolute_translational_error.mean 1.093105 m
+absolute_translational_error.median 1.010091 m
+absolute_translational_error.std 0.599530 m
+absolute_translational_error.min 0.200017 m
+absolute_translational_error.max 2.517699 m
