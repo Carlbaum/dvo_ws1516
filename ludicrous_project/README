@@ -1,0 +1,19 @@
+All our code is in ./code/src
+The project can be compiled with
+make all
+make cublas
+make noncublas
+Some options can be passed along to the corresponding executables:
+-path ../data/rgbd_corresponding_uncompressed_dataset
+-tDistWeights 1 | tDistWeights 0 to enable|disable t-Distribution weights
+
+Take a look at the scripts
+./code/src/run_all.sh
+./code/data/test_many.sh
+They could be handy
+
+The visualization code of ./Matlab plots a 3D trajectory,
+but it is not polished and requires some hand-work for
+timestamp alignment.
+
+The folders in results are the result of running the test_many.sh script.
