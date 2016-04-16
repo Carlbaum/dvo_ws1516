@@ -11,7 +11,7 @@
 
 DATAPATH="../data/"$1 &&
 OUTPATH="../../results/"$1 &&
-mkdir $OUTPATH
+mkdir $OUTPATH &&
 
 echo "Running non_cublas no weights" &&
 ./ludicrous_non_cublas -path $DATAPATH -tDistWeights 0 > $OUTPATH"/run_all_output.txt" &&
@@ -24,6 +24,7 @@ echo "Running cublas with weights" &&
 
 cp "$DATAPATH"/*_trajectory.txt "$OUTPATH" &&
 
+echo "Running python evaluation" &&
 echo "*******************************************************" >> $OUTPATH"/run_all_output.txt" &&
 echo "*********** PYTHON EVALUATION TOOL RESULTS ************" >> $OUTPATH"/run_all_output.txt" &&
 echo "*******************************************************" >> $OUTPATH"/run_all_output.txt" &&
@@ -37,22 +38,22 @@ echo "no cublas no weigths ATE:" >> $OUTPATH"/run_all_output.txt" &&
 python ../../benchmark_tools/evaluate_ate.py --verbose  --plot $OUTPATH"/non_cublas_no_weights_ate.png" $DATAPATH"/groundtruth.txt" $OUTPATH"/gdist_nocublas_trajectory.txt" >> $OUTPATH"/run_all_output.txt" &&
 
 echo "*******************************************************" >> $OUTPATH"/run_all_output.txt" &&
-echo "no cublas no weigths RPE:" >> $OUTPATH"/run_all_output.txt" &&
+echo "no cublas with weigths RPE:" >> $OUTPATH"/run_all_output.txt" &&
 python ../../benchmark_tools/evaluate_rpe.py --verbose  --fixed_delta --plot $OUTPATH"/non_cublas_td-weights_rpe.png" $DATAPATH"/groundtruth.txt" $OUTPATH"/tdist_nocublas_trajectory.txt" >> $OUTPATH"/run_all_output.txt" &&
 echo "*******************************************************" >> $OUTPATH"/run_all_output.txt" &&
-echo "no cublas no weigths ATE:" >> $OUTPATH"/run_all_output.txt" &&
+echo "no cublas with weigths ATE:" >> $OUTPATH"/run_all_output.txt" &&
 python ../../benchmark_tools/evaluate_ate.py --verbose  --plot $OUTPATH"/non_cublas_td-weights_ate.png" $DATAPATH"/groundtruth.txt" $OUTPATH"/tdist_nocublas_trajectory.txt" >> $OUTPATH"/run_all_output.txt" &&
 
 echo "*******************************************************" >> $OUTPATH"/run_all_output.txt" &&
-echo "no cublas no weigths RPE:" >> $OUTPATH"/run_all_output.txt" &&
+echo "cublas no weigths RPE:" >> $OUTPATH"/run_all_output.txt" &&
 python ../../benchmark_tools/evaluate_rpe.py --verbose  --fixed_delta --plot $OUTPATH"/cublas_no_weights_rpe.png" $DATAPATH"/groundtruth.txt" $OUTPATH"/gdist_cublas_trajectory.txt" >> $OUTPATH"/run_all_output.txt" &&
 echo "*******************************************************" >> $OUTPATH"/run_all_output.txt" &&
-echo "no cublas no weigths ATE:" >> $OUTPATH"/run_all_output.txt" &&
+echo "cublas no weigths ATE:" >> $OUTPATH"/run_all_output.txt" &&
 python ../../benchmark_tools/evaluate_ate.py --verbose  --plot $OUTPATH"/cublas_no_weights_ate.png" $DATAPATH"/groundtruth.txt" $OUTPATH"/gdist_cublas_trajectory.txt" >> $OUTPATH"/run_all_output.txt" &&
 
 echo "*******************************************************" >> $OUTPATH"/run_all_output.txt" &&
-echo "no cublas no weigths RPE:" >> $OUTPATH"/run_all_output.txt" &&
+echo "cublas with weigths RPE:" >> $OUTPATH"/run_all_output.txt" &&
 python ../../benchmark_tools/evaluate_rpe.py --verbose  --fixed_delta --plot $OUTPATH"/cublas_td-weights_rpe.png" $DATAPATH"/groundtruth.txt" $OUTPATH"/tdist_cublas_trajectory.txt" >> $OUTPATH"/run_all_output.txt" &&
 echo "*******************************************************" >> $OUTPATH"/run_all_output.txt" &&
-echo "no cublas no weigths ATE:" >> $OUTPATH"/run_all_output.txt" &&
+echo "cublas with weigths ATE:" >> $OUTPATH"/run_all_output.txt" &&
 python ../../benchmark_tools/evaluate_ate.py --verbose  --plot $OUTPATH"/cublas_td-weights_ate.png" $DATAPATH"/groundtruth.txt" $OUTPATH"/tdist_cublas_trajectory.txt" >> $OUTPATH"/run_all_output.txt"
